@@ -2,342 +2,233 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>🌱 ESP32 Plant Dashboard</title>
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    /* Configuration pour remplir exactement l'écran sans scroll */
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: #020617;
+    }
+
     body {
-      background: #0f172a;
+      background: var(--bg-dark);
       color: #e5e7eb;
-      font-family: Arial;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       text-align: center;
-    }
-    .card {
-      background: #020617;
-      padding: 20px;
-      margin: 20px auto;
-      width: 90%;
-      max-width: 600px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px #000;
-    }
-    .sensor-container {
+      margin: 0;
+      padding: 0;
+      /* Utilisation du svh pour éviter que la barre d'outil du navigateur ne cache le bas */
+      height: 100svh; 
       display: flex;
-      justify-content: space-around;
-      flex-wrap: wrap;
+      flex-direction: column;
+      overflow: hidden; /* Empêche le scroll global */
     }
+
+    h1 { 
+      font-size: 1.2rem; 
+      margin: 10px 0;
+      flex-shrink: 0;
+    }
+
+    /* Les deux conteneurs principaux se partagent l'espace */
+    .card-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 10px;
+      overflow: hidden;
+    }
+
+    .card {
+      background: var(--card-bg);
+      padding: 15px 10px;
+      border-radius: 15px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .card.sensors { flex: 2; } /* Prend plus de place pour les cercles */
+    .card.history { flex: 1.5; min-height: 200px; } /* Pour le graphique */
+
+    .sensor-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr; /* 2 colonnes sur mobile vertical */
+      gap: 10px;
+      justify-items: center;
+      align-items: center;
+    }
+
     .sensor-circle {
-      width: 120px;
-      height: 120px;
-      border-radius: 50%;
+      width: 100px; /* Légèrement réduit pour mobile */
+      height: 100px;
       position: relative;
       cursor: pointer;
-      transition: transform 0.2s;
-      margin: 10px;
     }
-    .sensor-circle:hover {
-      transform: scale(1.05);
-    }
-    .sensor-circle.not-button {
-      cursor: default;
-    }
-    .sensor-circle.not-button:hover {
-      transform: none;
-    }
+
     .sensor-circle svg {
       width: 100%;
       height: 100%;
       transform: rotate(-90deg);
     }
-    .sensor-circle circle {
-      fill: none;
-      stroke-width: 8;
-    }
-    .sensor-bg {
-      stroke: #374151;
-    }
-    .sensor-progress.led-on {
-      stroke: #10b981; /* green */
-    }
-    .sensor-progress.led-off {
-      stroke: #dc2626; /* red */
-    }
-    .sensor-progress.fan-on {
-      stroke: #10b981;
-    }
-    .sensor-progress.fan-off {
-      stroke: #dc2626;
-    }
-    .sensor-progress.co2 {
-      /* default, no stroke */
-    }
-    .sensor-progress.co2-low {
-      stroke: #dc2626 !important; /* red for low */
-    }
-    .sensor-progress.co2-good {
-      stroke: #10b981 !important; /* green for good */
-    }
-    .sensor-progress.co2-high {
-      stroke: #dc2626 !important; /* red for high */
-    }
-    .sensor-progress.soil {
-      stroke: #10b981; /* green for soil */
-    }
-    .sensor-progress.rssi {
-      /* stroke set by JS */
-    }
+
+    .sensor-circle circle { fill: none; stroke-width: 10; }
+    .sensor-bg { stroke: #1e293b; }
+    .sensor-progress { transition: stroke-dasharray 0.5s ease; }
+
     .sensor-value {
       position: absolute;
-      top: 50%;
-      left: 50%;
+      top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      font-size: 14px;
-      font-weight: bold;
-    }
-    .sensor-label {
-      position: absolute;
-      top: 30%;
-      left: 50%;
-      transform: translateX(-50%);
-      font-size: 10px;
-      text-align: center;
-    }
-    .fan-indicator {
-      position: absolute;
-      top: 70%;
-      left: 50%;
-      transform: translateX(-50%);
       font-size: 12px;
       font-weight: bold;
     }
-    .fan-indicator.on {
-      color: #10b981; /* green */
-    }
-    .fan-indicator.off {
-      color: #6b7280; /* gray */
-    }
     
-    .alert {
-      display: none;
+    .sensor-label {
+      position: absolute;
+      top: 22%; left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px;
+      color: #94a3b8;
+      text-transform: uppercase;
     }
-    h2 {
-      display: flex;
-      justify-content: center;
-      align-items: center;
+
+    .action-title {
+      position: absolute;
+      top: 68%; left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px;
+      color: #64748b;
     }
+
+    .status-indicator {
+      position: absolute;
+      top: 78%; left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      font-weight: bold;
+    }
+    .status-indicator.on { color: #10b981; }
+    .status-indicator.off { color: #64748b; }
+
+    h2 { font-size: 1rem; margin: 0 0 10px 0; }
+    
+    /* Ajustement graphique */
+    canvas { max-height: 100% !important; width: 100% !important; }
+
   </style>
 </head>
 <body>
 
 <h1>🌿 Serre Connectée</h1>
 
-<div class="card">
-  <div class="sensor-container">
-    <div class="sensor-circle" id="lux-circle" onclick="toggleLED()">
-      <svg>
-        <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress led-off" cx="60" cy="60" r="50" id="lux-progress" stroke-dasharray="0 314"></circle>
-      </svg>
-      <div class="sensor-label">Luminosité</div>
-      <div class="sensor-value" id="lux">-</div>
-      <div class="fan-indicator off" id="led-indicator">OFF</div>
+<div class="card-container">
+  <div class="card sensors">
+    <div class="sensor-container">
+      <div class="sensor-circle" onclick="toggle('led', 'LED')">
+        <svg><circle class="sensor-bg" cx="50" cy="50" r="42"></circle><circle class="sensor-progress" cx="50" cy="50" r="42" id="lux-progress" stroke-dasharray="0 264"></circle></svg>
+        <div class="sensor-label">LUX</div>
+        <div class="sensor-value" id="lux-val">-</div>
+        <div class="action-title">LUMIÈRE</div>
+        <div class="status-indicator off" id="led-status">OFF</div>
+      </div>
+
+      <div class="sensor-circle" onclick="toggle('hum', 'HUM')">
+        <svg><circle class="sensor-bg" cx="50" cy="50" r="42"></circle><circle class="sensor-progress" cx="50" cy="50" r="42" id="soil-progress" stroke-dasharray="0 264"></circle></svg>
+        <div class="sensor-label">SOL</div>
+        <div class="sensor-value" id="soil-val">-</div>
+        <div class="action-title">POMPE</div>
+        <div class="status-indicator off" id="hum-status">OFF</div>
+      </div>
+
+      <div class="sensor-circle" onclick="toggle('fan', 'FAN')">
+        <svg><circle class="sensor-bg" cx="50" cy="50" r="42"></circle><circle class="sensor-progress" cx="50" cy="50" r="42" id="co2-progress" stroke-dasharray="0 264"></circle></svg>
+        <div class="sensor-label">CO2</div>
+        <div class="sensor-value" id="co2-val">-</div>
+        <div class="action-title">VENTILO</div>
+        <div class="status-indicator off" id="fan-status">OFF</div>
+      </div>
+
+      <div class="sensor-circle">
+        <svg><circle class="sensor-bg" cx="50" cy="50" r="42"></circle><circle class="sensor-progress" cx="50" cy="50" r="42" id="rssi-progress" stroke-dasharray="0 264"></circle></svg>
+        <div class="sensor-label">WiFi</div>
+        <div class="sensor-value" id="rssi-val">-</div>
+        <div class="action-title">SIGNAL</div>
+      </div>
     </div>
-    <div class="sensor-circle" id="soil-circle" onclick="toggleHumidifier()">
-      <svg>
-        <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress soil" cx="60" cy="60" r="50" id="soil-progress" stroke-dasharray="0 314"></circle>
-      </svg>
-      <div class="sensor-label">Humidité</div>
-      <div class="sensor-value" id="soil">-</div>
-      <div class="fan-indicator off" id="humidifier-indicator">OFF</div>
-    </div>
-    <div class="sensor-circle" id="co2-circle" onclick="toggleFan()">
-      <svg>
-        <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress co2" cx="60" cy="60" r="50" id="co2-progress" stroke-dasharray="0 314"></circle>
-      </svg>
-      <div class="sensor-label">CO2</div>
-      <div class="sensor-value" id="co2">-</div>
-      <div class="fan-indicator off" id="fan-indicator">OFF</div>
-    </div>
-    <div class="sensor-circle not-button">
-      <svg>
-        <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress rssi" cx="60" cy="60" r="50" id="rssi-progress" stroke-dasharray="0 314"></circle>
-      </svg>
-      <div class="sensor-label">WiFi</div>
-      <div class="sensor-value" id="rssi">-</div>
+  </div>
+
+  <div class="card history">
+    <h2>📈 Historique</h2>
+    <div style="flex:1; position:relative;">
+      <canvas id="historyChart"></canvas>
     </div>
   </div>
 </div>
 
-<div class="card">
-  <h2>📈 Historique</h2>
-  <canvas id="historyChart" width="350" height="150"></canvas>
-</div>
-
-<div id="alertBox" class="alert" style="display: none;"></div>
-
 <script>
   const socket = io();
   let historyChart;
-  let ledState = false;
-  let fanState = false;
-  let humidifierState = false;
+  const CIRCUMFERENCE = 2 * Math.PI * 42; // Rayon ajusté à 42
 
-  function updateSensor(sensorId, value, maxValue = 100) {
-    const valueEl = document.getElementById(sensorId);
-    const progressEl = document.getElementById(sensorId + '-progress');
-    const circumference = 2 * Math.PI * 50; // r=50
-    let percentage = Math.min(Math.max(value / maxValue * 100, 0), 100);
-    progressEl.style.strokeDasharray = `${percentage / 100 * circumference} ${circumference}`;
-    let unit = "";
-    if (sensorId === 'soil') unit = " %";
-    valueEl.innerText = value.toFixed(1) + unit;
+  let states = { led: false, hum: false, fan: false };
+
+  function updateCircle(id, value, percentage, color, unit, isInteger = false) {
+    const progress = document.getElementById(id + '-progress');
+    const label = document.getElementById(id + '-val');
+    const offset = (percentage / 100) * CIRCUMFERENCE;
+    progress.style.strokeDasharray = `${offset} ${CIRCUMFERENCE}`;
+    progress.style.stroke = color;
+    label.innerText = (isInteger ? Math.round(value) : value.toFixed(1)) + unit;
   }
 
-  function toggleLED() {
-    ledState = !ledState;
-    const indicatorEl = document.getElementById('led-indicator');
-    indicatorEl.className = 'fan-indicator ' + (ledState ? 'on' : 'off');
-    indicatorEl.innerText = ledState ? 'ON' : 'OFF';
-    send(ledState ? 'LED_ON' : 'LED_OFF');
-  }
-
-  function toggleHumidifier() {
-    humidifierState = !humidifierState;
-    const indicatorEl = document.getElementById('humidifier-indicator');
-    indicatorEl.className = 'fan-indicator ' + (humidifierState ? 'on' : 'off');
-    indicatorEl.innerText = humidifierState ? 'ON' : 'OFF';
-    send(humidifierState ? 'HUM_ON' : 'HUM_OFF');
+  function toggle(type, cmdPrefix) {
+    states[type] = !states[type];
+    const indicator = document.getElementById(type + '-status');
+    indicator.className = 'status-indicator ' + (states[type] ? 'on' : 'off');
+    indicator.innerText = states[type] ? 'ON' : 'OFF';
+    socket.emit('cmd', states[type] ? cmdPrefix + '_ON' : cmdPrefix + '_OFF');
   }
 
   socket.on('telemetry', data => {
-    const circumference = 2 * Math.PI * 50; // r=50
-
-    // Pour luminosité, échelle logarithmique de 0 à 65000 lux
-    let luxValue = data.luminosite;
-    let luxPercentage = 0;
-    if (luxValue <= 0) {
-      luxPercentage = 0;
-    } else if (luxValue > 65000) {
-      luxPercentage = 100;
-    } else {
-      luxPercentage = (Math.log10(luxValue + 1) / Math.log10(65001)) * 100;
-    }
-    const luxProgressEl = document.getElementById('lux-progress');
-    luxProgressEl.style.strokeDasharray = `${luxPercentage / 100 * circumference} ${circumference}`;
-    // Couleur selon niveau luminosité pour plante
-    let luxColor = '#dc2626'; // red default
-    if (luxValue >= 500 && luxValue <= 10000) {
-      luxColor = '#10b981'; // green for good
-    }
-    luxProgressEl.style.stroke = luxColor;
-    document.getElementById('lux').innerText = luxValue.toFixed(1) + " lux";
-
-    updateSensor('soil', data.humidite_sol);
-    // Couleur pour humidité
-    let soilValue = data.humidite_sol;
-    let soilColor = '#dc2626'; // red default
-    if (soilValue >= 30 && soilValue <= 70) {
-      soilColor = '#10b981'; // green for good
-    }
-    document.getElementById('soil-progress').style.stroke = soilColor;
-    // Pour CO2, échelle pour serre : 200 à 1500 ppm
-    let co2Value = data.co2;
-    let co2Percentage = Math.min(Math.max((co2Value - 200) / (1500 - 200) * 100, 0), 100);
-    const co2ProgressEl = document.getElementById('co2-progress');
-    co2ProgressEl.style.strokeDasharray = `${co2Percentage / 100 * circumference} ${circumference}`;
-    // Couleur selon niveau CO2
-    let color = '#10b981'; // green for good
-    if (co2Value < 400) {
-      color = '#dc2626'; // red for low
-    } else if (co2Value > 1200) {
-      color = '#dc2626'; // red for high
-    }
-    co2ProgressEl.style.stroke = color;
-    document.getElementById('co2').innerText = co2Value.toFixed(1) + " ppm";
-    // Pour RSSI, échelle de 0 à -100 dB (100% = -30dB excellent, 0% = -100dB faible)
-    const rssiValue = data.rssi;
-    const rssiPercent = Math.max(0, (rssiValue + 100) / 70 * 100);
-    const rssiProgressEl = document.getElementById('rssi-progress');
-    rssiProgressEl.style.strokeDasharray = `${rssiPercent / 100 * circumference} ${circumference}`;
-    // Couleur selon pourcentage RSSI
-    let rssiColor = '#dc2626'; // red for low percentage (bad signal)
-    if (rssiPercent > 70) {
-      rssiColor = '#10b981'; // green for high percentage (good signal)
-    } else if (rssiPercent > 30) {
-      rssiColor = '#f59e0b'; // yellow for medium
-    }
-    rssiProgressEl.style.stroke = rssiColor;
-    document.getElementById('rssi').innerText = rssiValue + " dB";
+    updateCircle('lux', data.luminosite, (Math.log10(data.luminosite + 1) / Math.log10(65001)) * 100, (data.luminosite >= 500 && data.luminosite <= 10000) ? '#10b981' : '#dc2626', "lx");
+    updateCircle('soil', data.humidite_sol, data.humidite_sol, (data.humidite_sol >= 30 && data.humidite_sol <= 70) ? '#10b981' : '#dc2626', "%");
+    updateCircle('co2', data.co2, Math.min(Math.max((data.co2 - 200) / 1300 * 100, 0), 100), (data.co2 >= 400 && data.co2 <= 1200) ? '#10b981' : '#dc2626', "ppm", true);
+    let rssiP = Math.max(0, (data.rssi + 100) / 70 * 100);
+    updateCircle('rssi', data.rssi, rssiP, rssiP > 70 ? '#10b981' : (rssiP > 30 ? '#f59e0b' : '#dc2626'), "dB", true);
   });
-
-  socket.on('alert', alertData => {
-    // Alerte supprimée
-  });
-
-  function send(cmd) {
-    socket.emit('cmd', cmd);
-  }
 
   function loadHistory() {
-    fetch('/api/history')
-      .then(res => res.json())
-      .then(data => {
-        if (data.length === 0) return;
-
-        const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString()).reverse();
-        const luxData = data.map(d => d.luminosite).reverse();
-        const soilData = data.map(d => d.humidite_sol).reverse();
-        const co2Data = data.map(d => d.co2).reverse();
-
-        if (historyChart) {
-          historyChart.destroy();
+    fetch('/api/history').then(res => res.json()).then(data => {
+      if (!data || data.length === 0) return;
+      const config = {
+        type: 'line',
+        data: {
+          labels: data.map(d => new Date(d.timestamp).toLocaleTimeString()).reverse(),
+          datasets: [
+            { label: 'Lux', data: data.map(d => d.luminosite).reverse(), borderColor: 'yellow', tension: 0.3, pointRadius: 0 },
+            { label: 'Sol', data: data.map(d => d.humidite_sol).reverse(), borderColor: 'blue', tension: 0.3, pointRadius: 0 },
+            { label: 'CO2', data: data.map(d => d.co2).reverse(), borderColor: 'green', tension: 0.3, pointRadius: 0 }
+          ]
+        },
+        options: { 
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } }, // On cache la légende pour gagner de la place
+          scales: { y: { ticks: { color: '#64748b', font: { size: 9 } } }, x: { display: false } }
         }
-
-        historyChart = new Chart(document.getElementById('historyChart'), {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [
-              {
-                label: 'Luminosité (lux)',
-                data: luxData,
-                borderColor: 'yellow',
-                fill: false
-              },
-              {
-                label: 'Humidité Sol (%)',
-                data: soilData,
-                borderColor: 'blue',
-                fill: false
-              },
-              {
-                label: 'CO2 (ppm)',
-                data: co2Data,
-                borderColor: 'green',
-                fill: false
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            scales: {
-              x: { display: true },
-              y: { display: true }
-            }
-          }
-        });
-      });
+      };
+      if (historyChart) historyChart.destroy();
+      historyChart = new Chart(document.getElementById('historyChart'), config);
+    });
   }
 
-  // Charger l'historique au démarrage
   loadHistory();
-
-  // Rafraîchir automatiquement toutes les 30 secondes
-  setInterval(loadHistory, 5000);
+  setInterval(loadHistory, 15000);
 </script>
-
 </body>
 </html>
