@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mqtt-broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-esp32
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: esp32
+      MYSQL_USER: esp32
+      MYSQL_PASSWORD: esp32
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
+

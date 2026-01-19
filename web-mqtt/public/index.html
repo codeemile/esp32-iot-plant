@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>🌱 ESP32 Plant Dashboard</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: Arial;
+      text-align: center;
+    }
+    .card {
+      background: #020617;
+      padding: 20px;
+      margin: 20px auto;
+      width: 300px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px #000;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🌿 Plante Connectée ESP32</h1>
+
+<div class="card">
+  <h2>📊 Capteurs</h2>
+  <p>💡 Luminosité : <b><span id="lux">-</span> lux</b></p>
+  <p>💧 Humidité sol : <b><span id="soil">-</span> %</b></p>
+  <p>📶 RSSI : <b><span id="rssi">-</span> dBm</b></p>
+</div>
+
+<div class="card">
+  <h2>⚙️ Actionneurs</h2>
+  <button onclick="send('LED_ON')">💡 LED ON</button>
+  <button onclick="send('LED_OFF')">🌑 LED OFF</button>
+  <br>
+  <button onclick="send('FAN_ON')">🌀 Ventilateur ON</button>
+  <button onclick="send('FAN_OFF')">⛔ Ventilateur OFF</button>
+</div>
+
+<script>
+  const socket = io();
+
+  socket.on('telemetry', data => {
+    document.getElementById('lux').innerText = data.luminosite.toFixed(1);
+    document.getElementById('soil').innerText = data.humidite_sol.toFixed(1);
+    document.getElementById('rssi').innerText = data.rssi;
+  });
+
+  function send(cmd) {
+    socket.emit('cmd', cmd);
+  }
+</script>
+
+</body>
+</html>
