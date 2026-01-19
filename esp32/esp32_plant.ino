@@ -8,17 +8,21 @@
 #define SOIL_PIN 34
 #define LED_PIN 2
 #define FAN_PIN 14
+#define HUMIDIFIER_PIN 13
 
 const char* WIFI_SSID = "CFAINSTA_STUDENTS";
 const char* WIFI_PASS = "Cf@InSt@-$tUd3nT";
 const char* MQTT_HOST = "172.16.8.1";
+const char* MQTT_HOST2 = "192.168.1.100"; // Remplacez par la deuxième adresse IP
 const int   MQTT_PORT = 1883;
 
 const char* TOPIC_TELEMETRY = "tp/esp32/telemetry";
 const char* TOPIC_CMD       = "tp/esp32/cmd";
 
 WiFiClient espClient;
+WiFiClient espClient2;
 PubSubClient mqtt(espClient);
+PubSubClient mqtt2(espClient2);
 BH1750 lightMeter;
 
 unsigned long lastSend = 0;
@@ -50,6 +54,15 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
       digitalWrite(FAN_PIN, LOW);
       Serial.println("[ACTION] FAN -> OFF");
     }
+    // Contrôle de l'humidificateur (Pin 13)
+    else if (msg == "HUM_ON") {
+      digitalWrite(HUMIDIFIER_PIN, HIGH);
+      Serial.println("[ACTION] HUMIDIFIER -> ON");
+    }
+    else if (msg == "HUM_OFF") {
+      digitalWrite(HUMIDIFIER_PIN, LOW);
+      Serial.println("[ACTION] HUMIDIFIER -> OFF");
+    }
   }
 }
 
@@ -68,6 +81,14 @@ void connectMQTT() {
       mqtt.subscribe(TOPIC_CMD);
     } else { delay(2000); }
   }
+
+  mqtt2.setServer(MQTT_HOST2, MQTT_PORT);
+  while (!mqtt2.connected()) {
+    String clientId2 = "ESP32-Plant-2-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    if (mqtt2.connect(clientId2.c_str())) {
+      // Pas de subscribe pour le second, seulement publish
+    } else { delay(2000); }
+  }
 }
 
 void setup() {
@@ -75,8 +96,10 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   pinMode(LED_PIN, OUTPUT);
   pinMode(SOIL_PIN, INPUT); // Capteur d'humidité
-pinMode(FAN_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
+  pinMode(HUMIDIFIER_PIN, OUTPUT);
   digitalWrite(FAN_PIN, LOW);
+  digitalWrite(HUMIDIFIER_PIN, LOW);
 
   connectWiFi();
   connectMQTT();
@@ -85,7 +108,9 @@ pinMode(FAN_PIN, OUTPUT);
 
 void loop() {
   if (!mqtt.connected()) connectMQTT();
+  if (!mqtt2.connected()) connectMQTT(); // Reconnect both if needed
   mqtt.loop();
+  mqtt2.loop(); // Pour le second, même si pas de subscribe
 
   unsigned long now = millis();
   if (now - lastSend >= 2000) {
@@ -104,10 +129,12 @@ void loop() {
     String payload = "{";
     payload += "\"luminosite\":" + String(lux);
     payload += ",\"humidite_sol\":" + String(soilPercent);
+    payload += ",\"co2\":" + String(random(400, 800)); // Simulé CO2 ppm
     payload += ",\"rssi\":" + String(WiFi.RSSI());
     payload += "}";
 
     Serial.println("Publie: " + payload);
     mqtt.publish(TOPIC_TELEMETRY, payload.c_str());
+    mqtt2.publish(TOPIC_TELEMETRY, payload.c_str()); // Publie aussi vers le second broker
   }
 }

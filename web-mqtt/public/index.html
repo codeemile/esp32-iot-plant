@@ -68,9 +68,12 @@
     .sensor-progress.fan-off {
       stroke: #dc2626;
     }
+    .sensor-progress.co2 {
+      stroke: #3b82f6; /* blue for CO2 */
+    }
     .sensor-value {
       position: absolute;
-      top: 60%;
+      top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
       font-size: 16px;
@@ -78,11 +81,25 @@
     }
     .sensor-label {
       position: absolute;
-      top: 35%;
+      top: 30%;
       left: 50%;
       transform: translateX(-50%);
       font-size: 10px;
       text-align: center;
+    }
+    .fan-indicator {
+      position: absolute;
+      top: 70%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      font-weight: bold;
+    }
+    .fan-indicator.on {
+      color: #10b981; /* green */
+    }
+    .fan-indicator.off {
+      color: #6b7280; /* gray */
     }
     .refresh-btn {
       background: transparent;
@@ -135,14 +152,25 @@
       </svg>
       <div class="sensor-label">Luminosité</div>
       <div class="sensor-value" id="lux">-</div>
+      <div class="fan-indicator off" id="led-indicator">OFF</div>
     </div>
-    <div class="sensor-circle" id="soil-circle" onclick="toggleFan()">
+    <div class="sensor-circle" id="soil-circle" onclick="toggleHumidifier()">
       <svg>
         <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress fan-off" cx="60" cy="60" r="50" id="soil-progress" stroke-dasharray="0 314"></circle>
+        <circle class="sensor-progress" cx="60" cy="60" r="50" id="soil-progress" stroke-dasharray="0 314"></circle>
       </svg>
       <div class="sensor-label">Humidité</div>
       <div class="sensor-value" id="soil">-</div>
+      <div class="fan-indicator off" id="humidifier-indicator">OFF</div>
+    </div>
+    <div class="sensor-circle" id="co2-circle" onclick="toggleFan()">
+      <svg>
+        <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
+        <circle class="sensor-progress co2" cx="60" cy="60" r="50" id="co2-progress" stroke-dasharray="0 314"></circle>
+      </svg>
+      <div class="sensor-label">CO2</div>
+      <div class="sensor-value" id="co2">-</div>
+      <div class="fan-indicator off" id="fan-indicator">OFF</div>
     </div>
     <div class="sensor-circle not-button">
       <svg>
@@ -156,7 +184,7 @@
 </div>
 
 <div class="card">
-  <h2>📈 Historique <button class="refresh-btn" onclick="loadHistory()" title="Actualiser" style="margin-left: 10px;">🔄</button></h2>
+  <h2>📈 Historique</h2>
   <canvas id="historyChart" width="400" height="200"></canvas>
 </div>
 
@@ -167,6 +195,7 @@
   let historyChart;
   let ledState = false;
   let fanState = false;
+  let humidifierState = false;
 
   function updateSensor(sensorId, value, maxValue = 100) {
     const valueEl = document.getElementById(sensorId);
@@ -181,23 +210,47 @@
     ledState = !ledState;
     const progressEl = document.getElementById('lux-progress');
     progressEl.className = 'sensor-progress ' + (ledState ? 'led-on' : 'led-off');
+    const indicatorEl = document.getElementById('led-indicator');
+    indicatorEl.className = 'fan-indicator ' + (ledState ? 'on' : 'off');
+    indicatorEl.innerText = ledState ? 'ON' : 'OFF';
     send(ledState ? 'LED_ON' : 'LED_OFF');
   }
 
-  function toggleFan() {
-    fanState = !fanState;
-    const progressEl = document.getElementById('soil-progress');
-    progressEl.className = 'sensor-progress ' + (fanState ? 'fan-on' : 'fan-off');
-    send(fanState ? 'FAN_ON' : 'FAN_OFF');
+  function toggleHumidifier() {
+    humidifierState = !humidifierState;
+    const indicatorEl = document.getElementById('humidifier-indicator');
+    indicatorEl.className = 'fan-indicator ' + (humidifierState ? 'on' : 'off');
+    indicatorEl.innerText = humidifierState ? 'ON' : 'OFF';
+    send(humidifierState ? 'HUM_ON' : 'HUM_OFF');
   }
 
   socket.on('telemetry', data => {
-    // Pour luminosité, normaliser à 0-100% (ex: max 1000 lux)
-    updateSensor('lux', data.luminosite, 1000);
+    const circumference = 2 * Math.PI * 50; // r=50
+
+    // Pour luminosité, échelle logarithmique de 0 à 65000 lux
+    let luxValue = data.luminosite;
+    let luxPercentage = 0;
+    if (luxValue <= 0) {
+      luxPercentage = 0;
+    } else if (luxValue > 65000) {
+      luxPercentage = 100;
+    } else {
+      luxPercentage = (Math.log10(luxValue + 1) / Math.log10(65001)) * 100;
+    }
+    const luxProgressEl = document.getElementById('lux-progress');
+    luxProgressEl.style.strokeDasharray = `${luxPercentage / 100 * circumference} ${circumference}`;
+    document.getElementById('lux').innerText = luxValue.toFixed(1);
+
     updateSensor('soil', data.humidite_sol);
+    // Pour CO2, échelle de 100 à 10000 ppm
+    let co2Value = data.co2;
+    let co2Percentage = Math.min(Math.max((co2Value - 100) / (10000 - 100) * 100, 0), 100);
+    const co2ProgressEl = document.getElementById('co2-progress');
+    co2ProgressEl.style.strokeDasharray = `${co2Percentage / 100 * circumference} ${circumference}`;
+    document.getElementById('co2').innerText = co2Value.toFixed(1);
     // Pour RSSI, afficher valeur réelle, progress basé sur approximation
     const rssiPercent = Math.max(0, (data.rssi + 100) / 70 * 100); // De -100 à -30
-    document.getElementById('rssi-progress').style.strokeDasharray = `${rssiPercent / 100 * 2 * Math.PI * 50} ${2 * Math.PI * 50}`;
+    document.getElementById('rssi-progress').style.strokeDasharray = `${rssiPercent / 100 * circumference} ${circumference}`;
     document.getElementById('rssi').innerText = data.rssi;
   });
 
@@ -234,6 +287,7 @@
         const labels = data.map(d => new Date(d.timestamp).toLocaleTimeString()).reverse();
         const luxData = data.map(d => d.luminosite).reverse();
         const soilData = data.map(d => d.humidite_sol).reverse();
+        const co2Data = data.map(d => d.co2).reverse();
 
         if (historyChart) {
           historyChart.destroy();
@@ -255,6 +309,12 @@
                 data: soilData,
                 borderColor: 'blue',
                 fill: false
+              },
+              {
+                label: 'CO2 (ppm)',
+                data: co2Data,
+                borderColor: 'green',
+                fill: false
               }
             ]
           },
@@ -274,6 +334,9 @@
 
   // Charger l'historique au démarrage
   loadHistory();
+
+  // Rafraîchir automatiquement toutes les 30 secondes
+  setInterval(loadHistory, 5000);
 </script>
 
 </body>
