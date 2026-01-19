@@ -69,14 +69,29 @@
       stroke: #dc2626;
     }
     .sensor-progress.co2 {
-      stroke: #3b82f6; /* blue for CO2 */
+      /* default, no stroke */
+    }
+    .sensor-progress.co2-low {
+      stroke: #dc2626 !important; /* red for low */
+    }
+    .sensor-progress.co2-good {
+      stroke: #10b981 !important; /* green for good */
+    }
+    .sensor-progress.co2-high {
+      stroke: #dc2626 !important; /* red for high */
+    }
+    .sensor-progress.soil {
+      stroke: #10b981; /* green for soil */
+    }
+    .sensor-progress.rssi {
+      /* stroke set by JS */
     }
     .sensor-value {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      font-size: 16px;
+      font-size: 14px;
       font-weight: bold;
     }
     .sensor-label {
@@ -101,35 +116,8 @@
     .fan-indicator.off {
       color: #6b7280; /* gray */
     }
-    .refresh-btn {
-      background: transparent;
-      color: #10b981;
-      border: none;
-      width: 40px;
-      height: 40px;
-      cursor: pointer;
-      font-size: 18px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: color 0.2s;
-    }
-    .refresh-btn:hover {
-      color: #059669;
-    }
-    .refresh-btn.spinning {
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
+    
     .alert {
-      background: #dc2626;
-      color: white;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 5px;
       display: none;
     }
     h2 {
@@ -157,7 +145,7 @@
     <div class="sensor-circle" id="soil-circle" onclick="toggleHumidifier()">
       <svg>
         <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress" cx="60" cy="60" r="50" id="soil-progress" stroke-dasharray="0 314"></circle>
+        <circle class="sensor-progress soil" cx="60" cy="60" r="50" id="soil-progress" stroke-dasharray="0 314"></circle>
       </svg>
       <div class="sensor-label">Humidité</div>
       <div class="sensor-value" id="soil">-</div>
@@ -175,7 +163,7 @@
     <div class="sensor-circle not-button">
       <svg>
         <circle class="sensor-bg" cx="60" cy="60" r="50"></circle>
-        <circle class="sensor-progress" cx="60" cy="60" r="50" id="rssi-progress" stroke-dasharray="0 314"></circle>
+        <circle class="sensor-progress rssi" cx="60" cy="60" r="50" id="rssi-progress" stroke-dasharray="0 314"></circle>
       </svg>
       <div class="sensor-label">WiFi</div>
       <div class="sensor-value" id="rssi">-</div>
@@ -185,10 +173,10 @@
 
 <div class="card">
   <h2>📈 Historique</h2>
-  <canvas id="historyChart" width="400" height="200"></canvas>
+  <canvas id="historyChart" width="350" height="150"></canvas>
 </div>
 
-<div id="alertBox" class="alert"></div>
+<div id="alertBox" class="alert" style="display: none;"></div>
 
 <script>
   const socket = io();
@@ -203,13 +191,13 @@
     const circumference = 2 * Math.PI * 50; // r=50
     let percentage = Math.min(Math.max(value / maxValue * 100, 0), 100);
     progressEl.style.strokeDasharray = `${percentage / 100 * circumference} ${circumference}`;
-    valueEl.innerText = value.toFixed(1);
+    let unit = "";
+    if (sensorId === 'soil') unit = " %";
+    valueEl.innerText = value.toFixed(1) + unit;
   }
 
   function toggleLED() {
     ledState = !ledState;
-    const progressEl = document.getElementById('lux-progress');
-    progressEl.className = 'sensor-progress ' + (ledState ? 'led-on' : 'led-off');
     const indicatorEl = document.getElementById('led-indicator');
     indicatorEl.className = 'fan-indicator ' + (ledState ? 'on' : 'off');
     indicatorEl.innerText = ledState ? 'ON' : 'OFF';
@@ -239,37 +227,54 @@
     }
     const luxProgressEl = document.getElementById('lux-progress');
     luxProgressEl.style.strokeDasharray = `${luxPercentage / 100 * circumference} ${circumference}`;
-    document.getElementById('lux').innerText = luxValue.toFixed(1);
+    // Couleur selon niveau luminosité pour plante
+    let luxColor = '#dc2626'; // red default
+    if (luxValue >= 500 && luxValue <= 10000) {
+      luxColor = '#10b981'; // green for good
+    }
+    luxProgressEl.style.stroke = luxColor;
+    document.getElementById('lux').innerText = luxValue.toFixed(1) + " lux";
 
     updateSensor('soil', data.humidite_sol);
-    // Pour CO2, échelle de 100 à 10000 ppm
+    // Couleur pour humidité
+    let soilValue = data.humidite_sol;
+    let soilColor = '#dc2626'; // red default
+    if (soilValue >= 30 && soilValue <= 70) {
+      soilColor = '#10b981'; // green for good
+    }
+    document.getElementById('soil-progress').style.stroke = soilColor;
+    // Pour CO2, échelle pour serre : 200 à 1500 ppm
     let co2Value = data.co2;
-    let co2Percentage = Math.min(Math.max((co2Value - 100) / (10000 - 100) * 100, 0), 100);
+    let co2Percentage = Math.min(Math.max((co2Value - 200) / (1500 - 200) * 100, 0), 100);
     const co2ProgressEl = document.getElementById('co2-progress');
     co2ProgressEl.style.strokeDasharray = `${co2Percentage / 100 * circumference} ${circumference}`;
-    document.getElementById('co2').innerText = co2Value.toFixed(1);
-    // Pour RSSI, afficher valeur réelle, progress basé sur approximation
-    const rssiPercent = Math.max(0, (data.rssi + 100) / 70 * 100); // De -100 à -30
-    document.getElementById('rssi-progress').style.strokeDasharray = `${rssiPercent / 100 * circumference} ${circumference}`;
-    document.getElementById('rssi').innerText = data.rssi;
+    // Couleur selon niveau CO2
+    let color = '#10b981'; // green for good
+    if (co2Value < 400) {
+      color = '#dc2626'; // red for low
+    } else if (co2Value > 1200) {
+      color = '#dc2626'; // red for high
+    }
+    co2ProgressEl.style.stroke = color;
+    document.getElementById('co2').innerText = co2Value.toFixed(1) + " ppm";
+    // Pour RSSI, échelle de 0 à -100 dB (100% = -30dB excellent, 0% = -100dB faible)
+    const rssiValue = data.rssi;
+    const rssiPercent = Math.max(0, (rssiValue + 100) / 70 * 100);
+    const rssiProgressEl = document.getElementById('rssi-progress');
+    rssiProgressEl.style.strokeDasharray = `${rssiPercent / 100 * circumference} ${circumference}`;
+    // Couleur selon pourcentage RSSI
+    let rssiColor = '#dc2626'; // red for low percentage (bad signal)
+    if (rssiPercent > 70) {
+      rssiColor = '#10b981'; // green for high percentage (good signal)
+    } else if (rssiPercent > 30) {
+      rssiColor = '#f59e0b'; // yellow for medium
+    }
+    rssiProgressEl.style.stroke = rssiColor;
+    document.getElementById('rssi').innerText = rssiValue + " dB";
   });
 
   socket.on('alert', alertData => {
-    const alertBox = document.getElementById('alertBox');
-    alertBox.innerText = alertData.message;
-    alertBox.style.display = 'block';
-    setTimeout(() => alertBox.style.display = 'none', 5000);
-
-    // Notification navigateur
-    if (Notification.permission === 'granted') {
-      new Notification('Alerte Plante', { body: alertData.message });
-    } else if (Notification.permission !== 'denied') {
-      Notification.requestPermission().then(permission => {
-        if (permission === 'granted') {
-          new Notification('Alerte Plante', { body: alertData.message });
-        }
-      });
-    }
+    // Alerte supprimée
   });
 
   function send(cmd) {
@@ -277,8 +282,6 @@
   }
 
   function loadHistory() {
-    const btn = document.querySelector('.refresh-btn');
-    btn.classList.add('spinning');
     fetch('/api/history')
       .then(res => res.json())
       .then(data => {
@@ -326,9 +329,6 @@
             }
           }
         });
-      })
-      .finally(() => {
-        btn.classList.remove('spinning');
       });
   }
 

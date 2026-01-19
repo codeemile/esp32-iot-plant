@@ -12,8 +12,8 @@
 
 const char* WIFI_SSID = "CFAINSTA_STUDENTS";
 const char* WIFI_PASS = "Cf@InSt@-$tUd3nT";
-const char* MQTT_HOST = "172.16.8.1";
-const char* MQTT_HOST2 = "192.168.1.100"; // Remplacez par la deuxième adresse IP
+const char* MQTT_HOST = "172.16.8.79";
+const char* MQTT_HOST2 = "172.16.8.107"; 
 const int   MQTT_PORT = 1883;
 
 const char* TOPIC_TELEMETRY = "tp/esp32/telemetry";
@@ -83,10 +83,11 @@ void connectMQTT() {
   }
 
   mqtt2.setServer(MQTT_HOST2, MQTT_PORT);
+  mqtt2.setCallback(onMessage); // Même callback pour le second
   while (!mqtt2.connected()) {
     String clientId2 = "ESP32-Plant-2-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     if (mqtt2.connect(clientId2.c_str())) {
-      // Pas de subscribe pour le second, seulement publish
+      mqtt2.subscribe(TOPIC_CMD); // S'abonner aux commandes aussi
     } else { delay(2000); }
   }
 }
