@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule auto-update ESP32 IoT Plant
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=esp32-iot-autoupdate.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -83,6 +83,12 @@ INFLUX_ORG=iot_org
 INFLUX_BUCKET=plant_data
 ```
 
+### Déploiement serveur physique avec auto-update
+
+Pour un hébergement sur serveur Linux (hors Railway) avec mise à jour automatique depuis GitHub + rebuild Docker, voir :
+
+- [deploy/README.md](deploy/README.md)
+
 ### 2. Lancer le serveur web
 
 ```bash

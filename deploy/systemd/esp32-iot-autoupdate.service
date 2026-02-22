@@ -1,0 +1,18 @@
+[Unit]
+Description=ESP32 IoT Plant - Auto update depuis GitHub + rebuild Docker
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/esp32-iot-plant
+ExecStart=/opt/esp32-iot-plant/deploy/autoupdate.sh
+User=deploy
+Group=docker
+Environment=AUTOUPDATE_REMOTE=origin
+Environment=AUTOUPDATE_BRANCH=main
+Environment=AUTOUPDATE_COMPOSE_FILE=docker-compose.yml
+Environment=AUTOUPDATE_PRUNE_IMAGES=0
+
+[Install]
+WantedBy=multi-user.target
