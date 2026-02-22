@@ -1,6 +1,6 @@
-// === Front-end: auth, capteurs, graphiques, settings ===
-// Ce fichier gère l'UI, les mises à jour en temps réel via WebSocket et le graphique.
-// WebSocket et variables globales
+// === Interface web ===
+// Ce fichier gère la connexion utilisateur, les données en direct et le graphique.
+// Connexion WebSocket et variables globales
 const socket = io({ reconnection: true, reconnectionDelay: 1000 });
 let chart = null;
 let states = { led: false, hum: false, fan: false };
@@ -37,9 +37,9 @@ const deviceConfig = {
   hum: { btnId: 'hum-btn', autoId: 'hum-auto', cmd: 'HUM' },
   fan: { btnId: 'fan-btn', autoId: 'fan-auto', cmd: 'FAN' }
 };
-const BASE_SCALE = 1000; // Échelle de base au rechargement
+const BASE_SCALE = 1000; // Valeur de zoom par défaut au chargement
 let maxScale = BASE_SCALE;
-const ZOOM_MULTIPLIER = 1.2; // 20% par clic
+const ZOOM_MULTIPLIER = 1.2; // Zoom de 20% à chaque action
 const LOGIN_COLLAPSED_CLASS = 'is-collapsed';
 let deferredInstallPrompt = null;
 let installPromptTriggered = false;
@@ -56,7 +56,7 @@ function attachNativeInstallPrompt() {
       promptEvent.prompt();
       await promptEvent.userChoice;
     } catch (_) {
-      // Certains contextes navigateur peuvent annuler le prompt
+      // Sur certains navigateurs, cette fenêtre peut être annulée
     }
   };
 
@@ -64,7 +64,7 @@ function attachNativeInstallPrompt() {
   window.addEventListener('keydown', triggerPrompt, { once: true, capture: true });
 }
 
-// === Fonctions de gestion d'authentification ===
+// === Fonctions de connexion utilisateur ===
 function setLoginError(msg) {
   const el = document.getElementById('login-error');
   if (msg) {
@@ -150,7 +150,7 @@ function logout() {
   disableButtons();
 }
 
-// Vérifier si on a un token au chargement
+// Vérifie si l'utilisateur était déjà connecté
 if (token) {
   console.log('[DEBUG] Token trouvé:', token.substring(0, 20) + '...');
   isAuthenticated = true;
@@ -219,7 +219,7 @@ async function handleLogin() {
   }
 }
 
-// === Événements WebSocket ===
+// === Événements temps réel ===
 socket.on('connect', () => {
   console.log('[WebSocket] Connecté');
   if (token) {
@@ -260,7 +260,7 @@ socket.on('disconnect', () => {
   }
 });
 
-// === Gestion des capteurs ===
+// === Mise à jour des capteurs ===
 function update(id, val, min, max) {
   const el = document.getElementById(id);
   const bubble = document.getElementById(id + '-bubble');
@@ -474,7 +474,7 @@ function toggleSettingsSection() {
   const settingsSection = document.getElementById('settings-section');
   if (settingsSection) {
     settingsSection.classList.toggle('visible');
-    // Charger les paramètres s'ils ne sont pas chargés
+    // Recharge les paramètres quand la section devient visible
     if (settingsSection.classList.contains('visible')) {
       loadSettings();
     }
@@ -486,7 +486,7 @@ socket.on('telemetry', d => {
   latestTelemetry = d;
   const thresholds = settingsCache.thresholds;
   
-  // Mise à jour des capteurs
+  // Met à jour les valeurs affichées
   update('lux', d.luminosite || 0, thresholds.lux.min, thresholds.lux.max);
   update('soil', d.humidite_sol || 0, thresholds.soil.min, thresholds.soil.max);
   update('humidity', d.humidite_air || 0, thresholds.air.min, thresholds.air.max);
@@ -495,7 +495,7 @@ socket.on('telemetry', d => {
   update('rssi', d.rssi || -100, thresholds.rssi.min, thresholds.rssi.max);
   updateWaterLevel(typeof d.water_full === 'boolean' ? d.water_full : null);
   
-  // Ajouter le nouveau point au graphique en temps réel
+  // Ajoute le nouveau point au graphique
   if (chartData) {
     chartData.push({
       timestamp: new Date().toISOString(),
@@ -515,7 +515,7 @@ socket.on('telemetry', d => {
     renderChart(chartData);
   }
   
-  // Synchroniser les états des boutons
+  // Synchronise l'état des boutons avec l'état réel des équipements
   if (d.led_on !== undefined) {
     setDeviceButtonState('led', d.led_on);
   }
@@ -529,7 +529,7 @@ socket.on('telemetry', d => {
   runAutomations(d);
 });
 
-// === Gestion du graphique ===
+// === Graphique ===
 function renderChart(data) {
   if (!data || data.length === 0) return;
   
@@ -643,7 +643,7 @@ function renderChart(data) {
 }
 
 function loadChart() {
-  maxScale = BASE_SCALE; // Réinitialiser à l'échelle de base
+  maxScale = BASE_SCALE; // Remet le zoom par défaut
   fetch('/api/history?limit=100')
     .then(r => r.json())
     .then(data => {
@@ -653,7 +653,7 @@ function loadChart() {
     .catch(err => console.error('Erreur chargement historique:', err));
 }
 
-// === Gestion des paramètres ===
+// === Paramètres ===
 async function loadSettings() {
   try {
     const response = await fetch('/api/settings', {
@@ -701,7 +701,7 @@ async function saveSettings(showAlert = true) {
         const errorPayload = await response.json();
         if (errorPayload?.error) errorMessage = errorPayload.error;
       } catch (_) {
-        // garder le message par défaut
+        // garde le message d'erreur standard
       }
       if (showAlert) {
         alert(`❌ ${errorMessage}`);
@@ -715,8 +715,8 @@ async function saveSettings(showAlert = true) {
   }
 }
 
-// === Gestion du zoom du graphique ===
-// On ajuste uniquement le max de l'axe Y pour zoomer/dézoomer facilement.
+// === Zoom du graphique ===
+// On change seulement la hauteur max de l'axe Y pour zoomer simplement.
 function applyZoom() {
   if (!chart) return;
   chart.options.scales.y.max = Math.round(maxScale);
@@ -730,11 +730,11 @@ function zoomIn() {
 
 function zoomOut() {
   maxScale *= ZOOM_MULTIPLIER;
-  if (maxScale > 100000) maxScale = 100000; // Limite maximale
+  if (maxScale > 100000) maxScale = 100000; // Évite un zoom trop grand
   applyZoom();
 }
 
-// Gestion du zoom à la molette de la souris
+// Zoom avec la molette de la souris
 document.addEventListener('DOMContentLoaded', () => {
   const chartWrapper = document.getElementById('chart-wrapper');
   if (chartWrapper) {
@@ -743,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       e.preventDefault();
       
-      // Scrolling vers le haut = zoom in, vers le bas = zoom out
+      // Roulette vers le haut = zoom avant, vers le bas = zoom arrière
       if (e.deltaY < 0) {
         zoomIn();
       } else {
@@ -753,7 +753,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Charger le graphique au démarrage
+// Charge l'historique au démarrage
 loadChart();
 
 window.addEventListener('beforeinstallprompt', (event) => {

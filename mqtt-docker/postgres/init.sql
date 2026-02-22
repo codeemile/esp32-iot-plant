@@ -1,4 +1,4 @@
--- Table des utilisateurs
+-- Liste des comptes utilisateurs
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_active BOOLEAN DEFAULT true
 );
 
--- Table des dispositifs ESP32
+-- Liste des appareils ESP32 liés aux utilisateurs
 CREATE TABLE IF NOT EXISTS devices (
   id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS devices (
   is_active BOOLEAN DEFAULT true
 );
 
--- Table des préférences utilisateur
+-- Réglages personnels de l'utilisateur (seuils, alertes)
 CREATE TABLE IF NOT EXISTS user_preferences (
   id SERIAL PRIMARY KEY,
   user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
@@ -34,12 +34,12 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour performance
+-- Index pour accélérer les recherches
 CREATE INDEX idx_devices_user_id ON devices(user_id);
 CREATE INDEX idx_devices_mac_address ON devices(mac_address);
 CREATE INDEX idx_users_email ON users(email);
 
--- Fonction pour mettre à jour updated_at automatiquement
+-- Met automatiquement la date de modification à chaque changement
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -48,11 +48,11 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Trigger pour users
+-- Active la mise à jour automatique de la date sur la table users
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Trigger pour user_preferences
+-- Active la mise à jour automatique de la date sur user_preferences
 CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON user_preferences
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

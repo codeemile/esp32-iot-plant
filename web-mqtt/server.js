@@ -1,5 +1,5 @@
-// === Backend Node.js ===
-// Ce serveur fait le pont entre MQTT (ESP32), WebSocket (UI) et la persistance (InfluxDB/PostgreSQL).
+// === Serveur principal ===
+// Ce serveur relie l'ESP32, l'interface web et les bases de données.
 const mqtt = require('mqtt');
 const express = require('express');
 const http = require('http');
@@ -12,13 +12,13 @@ const fs = require('fs').promises;
 const { Pool } = require('pg');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 
-// Configuration depuis variables d'environnement
+// Paramètres de base (peuvent être changés via les variables d'environnement)
 const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 const SETTINGS_FILE = process.env.SETTINGS_FILE || './settings.json';
 
-// PostgreSQL pour les comptes utilisateurs
-// Utiliser DATABASE_URL si disponible (Railway), sinon construire manuellement
+// PostgreSQL stocke les utilisateurs
+// Si DATABASE_URL existe on l'utilise, sinon on lit les champs séparés
 const pgPool = new Pool(
   process.env.DATABASE_URL ? 
   {
@@ -41,13 +41,13 @@ const pgPool = new Pool(
   }
 );
 
-// Gérer les erreurs du pool pour éviter les crashs
+// Évite l'arrêt du serveur si une connexion DB tombe
 pgPool.on('error', (err, client) => {
   console.error('[PostgreSQL] Erreur inattendue:', err.message);
-  // Le pool va automatiquement recréer les connexions
+  // Le pool recrée les connexions automatiquement
 });
 
-// InfluxDB pour les données de télémétrie (optionnel)
+// InfluxDB stocke les mesures capteurs (optionnel)
 const influxURL = process.env.INFLUX_URL || 'http://localhost:8086';
 const influxToken = process.env.INFLUX_TOKEN || 'mytoken123456';
 const influxOrg = process.env.INFLUX_ORG || 'iot_org';
@@ -56,7 +56,7 @@ const influxBucket = process.env.INFLUX_BUCKET || 'plant_data';
 let writeApi = null;
 let queryApi = null;
 
-// Vérifier que l'URL InfluxDB est valide avant de créer le client
+// Vérifie que l'adresse InfluxDB est correcte avant initialisation
 try {
   new URL(influxURL);
   const influxDB = new InfluxDB({ url: influxURL, token: influxToken });
@@ -70,7 +70,7 @@ try {
 const TOPIC_TELEMETRY = 'tp/esp32/telemetry';
 const TOPIC_CMD = 'tp/esp32/cmd';
 let lastTelemetrySent = 0;
-const MIN_SEND_INTERVAL = 2000; // Envoyer max 1 msg tous les 2s
+const MIN_SEND_INTERVAL = 2000; // Envoi limité à un message toutes les 2 secondes
 
 const app = express();
 const server = http.createServer(app);
@@ -84,7 +84,7 @@ const io = new Server(server, {
 app.use(express.static('public'));
 app.use(express.json());
 
-// Middleware d'authentification JWT
+// Vérifie le token de connexion envoyé par le navigateur
 function authenticateToken(req, res, next) {
   const token = req.headers['authorization']?.split(' ')[1];
   
@@ -101,9 +101,9 @@ function authenticateToken(req, res, next) {
   }
 }
 
-// Pas d'historique en mémoire - tout dans InfluxDB
+// L'historique n'est pas gardé en mémoire, il est lu depuis InfluxDB
 
-// Configuration email sécurisée (désactivé)
+// Bloc email prêt mais désactivé
 /*
 const emailConfig = {
   service: process.env.EMAIL_SERVICE || 'gmail',
@@ -118,7 +118,7 @@ if (emailConfig.auth.user && emailConfig.auth.pass) {
   transporter = nodemailer.createTransport(emailConfig);
 }
 
-// Fonction pour envoyer une alerte email
+// Envoi d'alerte par email
 async function sendAlertEmail(subject, message) {
   if (!transporter) {
     console.log('[EMAIL] Non configuré - alerte ignorée');
@@ -141,10 +141,10 @@ async function sendAlertEmail(subject, message) {
 }
 */
 
-// Initialisation des bases de données
+// Vérifie les connexions aux bases au démarrage
 async function initDatabases() {
   try {
-    // Test PostgreSQL
+    // Test simple PostgreSQL
     const pgClient = await pgPool.connect();
     console.log('[PostgreSQL] Connecté avec succès');
     pgClient.release();
@@ -153,7 +153,7 @@ async function initDatabases() {
     console.log('[PostgreSQL] Le serveur continue sans PostgreSQL');
   }
 
-  // Test InfluxDB simple (pas de health check, juste vérifier que writeApi est initialisé)
+  // Test simple InfluxDB
   if (writeApi) {
     console.log('[InfluxDB] Connecté avec succès');
   } else {
@@ -161,9 +161,9 @@ async function initDatabases() {
   }
 }
 
-// Sauvegarde dans InfluxDB
+// Enregistre une mesure dans InfluxDB
 function saveTelemetryToInflux(data) {
-  if (!writeApi) return; // InfluxDB désactivé
+  if (!writeApi) return; // InfluxDB non actif
   
   try {
     const point = new Point('plant_telemetry')
@@ -182,7 +182,7 @@ function saveTelemetryToInflux(data) {
   }
 }
 
-// MQTT
+// Connexion MQTT (messages ESP32)
 const client = mqtt.connect(MQTT_BROKER, {
   reconnectPeriod: 5000,
   connectTimeout: 30000
@@ -285,7 +285,7 @@ client.on('message', async (topic, message) => {
     try {
       const data = JSON.parse(message.toString());
       
-      // Throttle: envoyer max 1 msg tous les 5s
+      // Limite d'envoi pour éviter de saturer les clients
       const now = Date.now();
       if (now - lastTelemetrySent < MIN_SEND_INTERVAL) {
         console.log('[MQTT] Throttled - attente avant envoi');
@@ -295,10 +295,10 @@ client.on('message', async (topic, message) => {
 
       console.log('[MQTT] Données reçues:', data);
 
-      // Ajouter timestamp
+      // Ajoute l'heure de réception
       data.timestamp = new Date().toISOString();
       
-      // Convertir en entiers
+      // Arrondit les valeurs pour l'affichage
       data.luminosite = Math.round(data.luminosite);
       data.humidite_sol = Math.round(data.humidite_sol);
       data.humidite_air = Math.round(data.humidite_air || 0);
@@ -306,10 +306,10 @@ client.on('message', async (topic, message) => {
       data.pressure = Math.round(data.pressure);
       data.rssi = Math.round(data.rssi);
 
-      // Sauvegarder dans InfluxDB
+      // Sauvegarde en base
       saveTelemetryToInflux(data);
 
-      // Diffuser aux clients WebSocket
+      // Envoi en temps réel à l'interface web
       io.emit('telemetry', data);
     } catch (error) {
       console.error('[MQTT] Erreur traitement message:', error.message);
@@ -317,21 +317,21 @@ client.on('message', async (topic, message) => {
   }
 });
 
-// WebSocket
+// Canal temps réel navigateur <-> serveur
 io.on('connection', (socket) => {
   console.log('[WebSocket] Client connecté:', socket.id);
   let authenticatedUser = null;
 
-  // Envoyer l'état MQTT actuel au client
+  // Informe le client si MQTT est connecté
   socket.emit('mqtt_status', { connected: client.connected });
 
-  // Authentification WebSocket
+  // Connexion sécurisée du client web
   socket.on('auth', async (token) => {
     try {
-      // Vérifier le JWT
+      // Vérifie le token
       const decoded = jwt.verify(token, JWT_SECRET);
       
-      // Vérifier que l'utilisateur existe et est actif
+      // Vérifie que l'utilisateur existe encore et qu'il est actif
       const result = await pgPool.query(
         'SELECT id, username FROM users WHERE id = $1 AND is_active = true',
         [decoded.id]
@@ -351,7 +351,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('cmd', (cmd) => {
-    // Vérifier l'authentification avant d'accepter une commande
+    // Refuse les commandes si l'utilisateur n'est pas connecté
     if (!authenticatedUser) {
       socket.emit('cmd_ack', { cmd, status: 'error', message: 'Non authentifié' });
       return;
@@ -371,7 +371,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// API REST
+// API HTTP
 
 app.get('/api/settings', authenticateToken, (req, res) => {
   res.json(currentSettings);
@@ -383,7 +383,7 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
   res.json({ message: 'Paramètres mis à jour', settings: currentSettings });
 });
 
-// Historique depuis InfluxDB (dernières 100 mesures)
+// Retourne l'historique des mesures
 app.get('/api/history', async (req, res) => {
   if (!queryApi) {
     return res.json({ message: 'InfluxDB désactivé', data: [] });
@@ -422,7 +422,7 @@ app.get('/api/history', async (req, res) => {
         res.status(500).json({ error: 'Erreur récupération données' });
       },
       complete() {
-        // Inverser pour avoir les plus récentes à droite
+        // Inverse l'ordre pour l'affichage du graphique
         res.json(data.reverse());
       }
     });
@@ -432,7 +432,7 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-// Statistiques depuis InfluxDB
+// Retourne les moyennes sur 24h
 app.get('/api/stats', async (req, res) => {
   if (!queryApi) {
     return res.json({ message: 'InfluxDB désactivé', stats: {} });
@@ -474,9 +474,9 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-// API Authentification
+// API de connexion utilisateur
 
-// Login
+// Se connecter
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -501,14 +501,14 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
 
-    // Créer un JWT valide 7 jours
+    // Crée un token valable 7 jours
     const token = jwt.sign(
       { id: user.id, username: user.username },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // Mettre à jour last_login
+    // Mémorise la dernière connexion
     await pgPool.query(
       'UPDATE users SET last_login = NOW() WHERE id = $1',
       [user.id]
@@ -521,9 +521,9 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Register (désactivée en production pour la sécurité)
+// Créer un compte (bloqué en production)
 app.post('/api/register', async (req, res) => {
-  // Bloquer l'inscription en production
+  // En production, la création de compte public est désactivée
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ error: 'Inscription désactivée en production' });
   }
@@ -556,7 +556,7 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// Logout
+// Se déconnecter
 app.post('/api/logout', authenticateToken, async (req, res) => {
   try {
     const token = req.headers['authorization'].split(' ')[1];
@@ -567,7 +567,7 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
   }
 });
 
-// API Utilisateurs (PostgreSQL)
+// Liste des utilisateurs
 app.get('/api/users', async (req, res) => {
   try {
     const result = await pgPool.query('SELECT id, username, email, created_at, is_active FROM users ORDER BY created_at DESC');
@@ -578,9 +578,9 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-// ============= API ADMIN (Sécurisée par token secret) =============
+// ============= API ADMIN (protégée par token secret) =============
 
-// Middleware pour vérifier le token admin
+// Vérifie le token administrateur
 function requireAdminToken(req, res, next) {
   const adminToken = req.headers['x-admin-token'];
   const expectedToken = process.env.ADMIN_SECRET_TOKEN;
@@ -596,7 +596,7 @@ function requireAdminToken(req, res, next) {
   next();
 }
 
-// Lister tous les utilisateurs (ADMIN)
+// Admin : voir tous les utilisateurs
 app.get('/api/admin/users', requireAdminToken, async (req, res) => {
   try {
     const result = await pgPool.query('SELECT id, username, email, created_at, last_login, is_active FROM users ORDER BY created_at DESC');
@@ -607,7 +607,7 @@ app.get('/api/admin/users', requireAdminToken, async (req, res) => {
   }
 });
 
-// Créer un utilisateur (ADMIN)
+// Admin : créer un utilisateur
 app.post('/api/admin/users', requireAdminToken, async (req, res) => {
   try {
     const { username, password, email } = req.body;
@@ -637,7 +637,7 @@ app.post('/api/admin/users', requireAdminToken, async (req, res) => {
   }
 });
 
-// Supprimer un utilisateur (ADMIN)
+// Admin : supprimer un utilisateur
 app.delete('/api/admin/users/:id', requireAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -656,9 +656,9 @@ app.delete('/api/admin/users/:id', requireAdminToken, async (req, res) => {
 
 // ============= FIN API ADMIN =============
 
-// Supprimer un utilisateur (désactivée en production)
+// Suppression utilisateur (bloquée en production)
 app.delete('/api/users/:id', async (req, res) => {
-  // Bloquer la suppression en production pour la sécurité
+  // En production, la suppression directe est désactivée
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ error: 'Suppression désactivée en production' });
   }
@@ -683,9 +683,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Démarrage du serveur
+// Lancement du serveur
 const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0'; // Écouter sur toutes les interfaces réseau
+const HOST = '0.0.0.0'; // Rend le service accessible depuis le réseau
 
 async function startServer() {
   await loadSettingsFromFile();
@@ -704,11 +704,11 @@ async function startServer() {
   });
 }
 
-// Gestion propre de l'arrêt
+// Arrêt propre du serveur
 process.on('SIGTERM', async () => {
   console.log('[SERVER] Arrêt en cours...');
   
-  // Flush InfluxDB
+  // Vide le buffer InfluxDB avant arrêt
   try {
     await writeApi.close();
     console.log('[InfluxDB] Données flushées');
@@ -716,10 +716,10 @@ process.on('SIGTERM', async () => {
     console.error('[InfluxDB] Erreur flush:', e);
   }
   
-  // Fermer PostgreSQL
+  // Ferme PostgreSQL
   await pgPool.end();
   
-  // Fermer MQTT
+  // Ferme MQTT
   if (client) client.end();
   
   server.close(() => {

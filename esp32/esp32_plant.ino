@@ -1,5 +1,5 @@
-// === Dépendances principales ===
-// WiFi/MQTT pour la connectivité, I2C pour les capteurs, BH1750/BME280 pour la lumière et le climat.
+// === Bibliothèques utilisées ===
+// Elles servent à se connecter au WiFi/MQTT et à lire les capteurs.
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <Wire.h>
@@ -7,25 +7,25 @@
 #include <Adafruit_BME280.h>
 #include <adafruit_sensor.h>
 
-// ================= CONFIGURATION MQTT =================
-// Railway TCP Proxy (voir Settings -> Networking)
+// ================= RÉGLAGES MQTT =================
+// Adresse et port du serveur MQTT
 const char* MQTT_HOST = "ballast.proxy.rlwy.net";
 const int   MQTT_PORT = 18302;
-// Authentification MQTT
-const char* MQTT_USER = "";  // Laisser vide (allow_anonymous true)
+// Identifiants MQTT (laisser vide si le broker accepte les connexions anonymes)
+const char* MQTT_USER = "";  // Vide = pas d'identifiant
 const char* MQTT_PASS = "";
 // ==========================================================
 
-// === Brochage matériel ===
-#define I2C_SDA 22          // SDA du bus I2C
-#define I2C_SCL 21          // SCL du bus I2C
-#define SOIL_PIN 34         // Entrée analogique capteur d'humidité du sol
-#define WATER_LEVEL_PIN 35  // Entrée digitale capteur niveau d'eau (plein/vide)
-#define LED_PIN 10          // Sortie LED
-#define FAN_PIN 14          // Sortie ventilateur
-#define HUMIDIFIER_PIN 27   // Sortie humidificateur
-#define CTP_SDA 2           // (Réservé) SDA écran tactile/CTP
-#define CTP_SCL 15          // (Réservé) SCL écran tactile/CTP
+// === Branchements des broches ===
+#define I2C_SDA 22          // Fil SDA (communication capteurs I2C)
+#define I2C_SCL 21          // Fil SCL (communication capteurs I2C)
+#define SOIL_PIN 34         // Lecture humidité du sol
+#define WATER_LEVEL_PIN 35  // Détection niveau d'eau (plein/vide)
+#define LED_PIN 10          // Commande LED
+#define FAN_PIN 14          // Commande ventilateur
+#define HUMIDIFIER_PIN 27   // Commande humidificateur
+#define CTP_SDA 2           // Réservé (non utilisé ici)
+#define CTP_SCL 15          // Réservé (non utilisé ici)
 
 const char* WIFI_SSID = "CFAINSTA_STUDENTS";
 const char* WIFI_PASS = "Cf@InSt@-$tUd3nT";
@@ -35,29 +35,29 @@ const char* TOPIC_CMD       = "tp/esp32/cmd";
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 BH1750 lightMeter;
-Adafruit_BME280 bme; // I2C
+Adafruit_BME280 bme; // Capteur météo en I2C
 
-// Flags pour suivi des capteurs
+// Permet de savoir si les capteurs sont bien détectés
 bool bh1750_ok = false;
 bool bme280_ok = false;
-// Pression au niveau de la mer (hPa) pour calcul altitude
+// Valeur de référence de pression atmosphérique
 const float SEA_LEVEL_HPA = 1013.25;
 
-// États des appareils
+// État actuel des sorties
 bool ledOn = false;
 bool fanOn = false;
 bool humidifierOn = false;
 
 unsigned long lastSend = 0;
 unsigned long lastRetry = 0;
-const int retryInterval = 5000;     // Tentative connexion toutes les 5s
-const int sendInterval = 5000;      // Envoyer les données toutes les 5s
+const int retryInterval = 5000;     // Réessayer la connexion toutes les 5 secondes
+const int sendInterval = 5000;      // Envoyer les mesures toutes les 5 secondes
 
-// Capteur de niveau d'eau (plein/vide)
-const bool WATER_LEVEL_ACTIVE_LOW = true; // true si le capteur est actif à LOW
+// Type de capteur de niveau d'eau
+const bool WATER_LEVEL_ACTIVE_LOW = true; // true = capteur actif quand la broche est LOW
 
 
-// === Réception des commandes MQTT ===
+// === Réception des commandes à distance ===
 void onMessage(char* topic, byte* payload, unsigned int length) {
   String msg = "";
   for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
@@ -91,7 +91,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// === Connexion MQTT avec logique de retry ===
+// === Connexion au serveur MQTT avec tentative automatique ===
 void tryConnectMQTT() {
   if (!mqtt.connected() && millis() - lastRetry > retryInterval) {
     lastRetry = millis();
@@ -103,7 +103,7 @@ void tryConnectMQTT() {
     
     String clientId = "ESP32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     
-    // Connexion avec ou sans authentification
+    // Connexion avec identifiants ou sans identifiants
     bool connected = false;
     if (strlen(MQTT_USER) > 0) {
       connected = mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
@@ -120,7 +120,7 @@ void tryConnectMQTT() {
       Serial.print(code);
       Serial.print(") ");
       
-      // Diagnostics détaillés
+      // Messages d'aide en cas d'échec
       switch(code) {
         case -4: Serial.println("TIMEOUT - Serveur ne répond pas"); break;
         case -3: Serial.println("CONNEXION PERDUE"); break;
@@ -142,7 +142,7 @@ void tryConnectMQTT() {
   }
 }
 
-// === Initialisation matérielle et réseau ===
+// === Démarrage de la carte ===
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -173,14 +173,14 @@ void setup() {
   mqtt.setKeepAlive(60);
   mqtt.setSocketTimeout(15);
   
-   //Init BH1750
+  // Démarrage du capteur de luminosité
 if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE, 0x23, &Wire)) {
   bh1750_ok = true;
   Serial.println("BH1750 OK.");
 } else {
   Serial.println("Erreur : BH1750 introuvable. Vérifie le câblage.");
 }
-  // Init BME280
+  // Démarrage du capteur température / humidité / pression
   if (bme.begin(0x76) || bme.begin(0x77)) {
     bme280_ok = true;
     Serial.println("BME280 OK.");
@@ -191,21 +191,21 @@ if (lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE, 0x23, &Wire)) {
   Serial.println("\nPrêt !");
 }
 
-// === Boucle principale ===
-// 1) traite les messages MQTT, 2) assure la reconnexion, 3) publie la télémétrie
+// === Boucle continue ===
+// 1) lit les commandes, 2) se reconnecte si besoin, 3) envoie les mesures
 void loop() {
-  // 1. Priorité au traitement des messages (Actions rapides)
+  // 1. Traiter rapidement les commandes reçues
   mqtt.loop();
 
-  // 2. Tentatives de connexion
+  // 2. Reconnexion si la liaison est coupée
   tryConnectMQTT();
 
-  // 3. Envoi des données
+  // 3. Envoi périodique des capteurs
   unsigned long now = millis();
   if (now - lastSend >= sendInterval) {
     lastSend = now;
     
-    // Lire les capteurs avec vérifications
+    // Lire les capteurs avec contrôle d'erreur
     int lux = -1;
     if (bh1750_ok) {
       float luxFloat = lightMeter.readLightLevel();
@@ -228,7 +228,7 @@ void loop() {
     int waterRaw = digitalRead(WATER_LEVEL_PIN);
     bool waterFull = WATER_LEVEL_ACTIVE_LOW ? (waterRaw == LOW) : (waterRaw == HIGH);
 
-    // Debug en série
+    // Message d'aide dans le moniteur série
     if (lux < 0) Serial.println("[ERROR] BH1750 pas disponible - vérifier connexion I2C");
 
     String payload = "{\"luminosite\":" + String(lux) + 
@@ -245,5 +245,5 @@ void loop() {
     if (mqtt.connected()) mqtt.publish(TOPIC_TELEMETRY, payload.c_str());
   }
   
-  delay(50); // Petit délai pour ne pas surcharger le CPU
+  delay(50); // Petite pause pour garder le système fluide
 }
