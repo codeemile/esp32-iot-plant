@@ -76,6 +76,8 @@ services:
     environment:
       - NODE_ENV=production
       - MQTT_BROKER=mqtt://mosquitto:1883
+      - JWT_SECRET=${JWT_SECRET:-change-me-jwt-secret}
+      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN:-change-me-admin-token}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DATABASE=${POSTGRES_DB:-iot_plant}
@@ -88,7 +90,7 @@ services:
     networks:
       - iot-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: ["CMD", "node", "-e", "const req=require('http').get('http://127.0.0.1:3000',(r)=>process.exit(r.statusCode===200?0:1));req.on('error',()=>process.exit(1));"]
       interval: 30s
       timeout: 10s
       retries: 3

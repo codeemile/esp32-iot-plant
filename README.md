@@ -55,33 +55,40 @@ esp32-iot-plant/
 
 ### 1. Configuration de l'environnement
 
-Copier le fichier d'exemple et configurer vos paramètres :
+Le projet utilise **un seul fichier de configuration** : `.env` à la racine.
+
+Copier le fichier d'exemple :
 
 ```bash
 cp .env.example .env
 ```
 
-Variables principales à renseigner :
+Variables à renseigner dans `.env` :
 
 ```env
-# Web / Auth
-PORT=3000
-NODE_ENV=production
-JWT_SECRET=change-moi
-ADMIN_SECRET_TOKEN=change-moi-aussi
+# PostgreSQL
+POSTGRES_DB=iot_plant
+POSTGRES_USER=iot_user
+POSTGRES_PASSWORD=<mot-de-passe-fort>
 
-# MQTT
-MQTT_BROKER=mqtt://<hote>:1883
-
-# PostgreSQL (comptes utilisateurs)
-DATABASE_URL=postgres://<user>:<pass>@<host>:<port>/<db>
-
-# InfluxDB (télémétrie)
-INFLUX_URL=http://<host>:8086
-INFLUX_TOKEN=<token>
+# InfluxDB
+INFLUX_USER=admin
+INFLUX_PASSWORD=<mot-de-passe-fort>
 INFLUX_ORG=iot_org
 INFLUX_BUCKET=plant_data
+INFLUX_TOKEN=<token-fort>
+INFLUX_URL=http://influxdb:8086
+
+# Grafana
+GRAFANA_USER=admin
+GRAFANA_PASSWORD=<mot-de-passe-fort>
+
+# Sécurité API web
+JWT_SECRET=<secret-long-et-aleatoire>
+ADMIN_SECRET_TOKEN=<token-admin-long-et-aleatoire>
 ```
+
+> ⚠️ Important : les identifiants d'initialisation InfluxDB/Grafana/PostgreSQL sont appliqués à la création initiale des volumes. Si les volumes existent déjà, changer `.env` ne remplace pas toujours automatiquement les comptes déjà créés.
 
 ### Déploiement serveur physique avec auto-update
 
@@ -103,7 +110,79 @@ Services démarrés :
 - InfluxDB : `http://localhost:8086`
 - MQTT : `localhost:1883`
 
+### 2.1 Configuration et usage par service
+
+#### Web app (`web`)
+- URL : `http://localhost:3000`
+- Rôle : API REST, WebSocket, bridge MQTT, auth JWT.
+- Variables utilisées : `POSTGRES_*`, `INFLUX_*`, `JWT_SECRET`, `ADMIN_SECRET_TOKEN`.
+- Santé : `GET /health`
+
+#### PostgreSQL (`postgres-db`)
+- Rôle : comptes utilisateurs, préférences, devices.
+- Variables utilisées : `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+- Accès SQL (backdoor) :
+
+```bash
+docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+- Créer un compte applicatif directement en SQL (hash bcrypt via `pgcrypto`) :
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+INSERT INTO users (username, email, password_hash)
+VALUES ('admin2', 'admin2@mail.local', crypt('MonMotDePasseFort', gen_salt('bf', 10)));
+```
+
+#### InfluxDB (`influxdb`)
+- URL : `http://localhost:8086`
+- Rôle : stockage time-series télémétrie.
+- Variables utilisées : `INFLUX_USER`, `INFLUX_PASSWORD`, `INFLUX_ORG`, `INFLUX_BUCKET`, `INFLUX_TOKEN`.
+- Vérification rapide :
+
+```bash
+docker compose exec influxdb influx ping
+```
+
+#### Grafana (`grafana`)
+- URL : `http://localhost:3001`
+- Login admin : `GRAFANA_USER` / `GRAFANA_PASSWORD`.
+- Datasource Influx provisionnée automatiquement (`InfluxDB-Plant`) via `MQTT-BDD/grafana/provisioning`.
+
+#### Mosquitto (`mqtt-broker`)
+- Ports : `1883` (MQTT TCP), `9001` (WebSocket).
+- Configuration : `MQTT-BDD/mosquitto/mosquitto.conf`.
+- Mode actuel : `allow_anonymous true` (démo/dev).
+
+#### Nginx reverse proxy (`reverse-proxy`)
+- URL : `http://localhost:80`
+- Configuration : `MQTT-BDD/nginx.conf`.
+- Rôle : point d'entrée HTTP vers le service web.
+
+### 2.2 Commandes utiles de gestion
+
+```bash
+# État des services
+docker compose ps
+
+# Logs d'un service
+docker compose logs -f web
+docker compose logs -f postgres
+
+# Redémarrer un service
+docker compose restart web
+
+# Recharger après changement du .env (sans supprimer les volumes)
+docker compose up -d --build
+
+# Réinitialisation complète (⚠️ supprime les données)
+docker compose down -v && docker compose up -d --build
+```
+
 ### 3. (Optionnel) Lancer seulement le serveur web en local
+
+Ce mode est utile pour du debug Node.js, pas pour un démarrage standard de la stack.
 
 ```bash
 cd WEB-APP
@@ -292,7 +371,3 @@ Timestamp: automatique
 Emile
 Enzo
 Julien
-
-## 🙏 Remerciements
-
-Personne, fallait être là
