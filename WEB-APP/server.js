@@ -212,6 +212,9 @@ const defaultSettings = {
 
 let currentSettings = { ...defaultSettings };
 
+// Fusionne des paramètres entrants avec les valeurs par défaut,
+// en conservant des types sûrs (nombres/booleans) pour éviter
+// d'écrire des paramètres invalides dans le runtime.
 function mergeSettings(defaults, incoming = {}) {
   const merged = { thresholds: {}, indicators: {}, automations: {} };
 
@@ -237,6 +240,8 @@ function mergeSettings(defaults, incoming = {}) {
   return merged;
 }
 
+// Charge les paramètres depuis le fichier JSON local.
+// Si le fichier est absent/corrompu, on retombe sur la config par défaut.
 async function loadSettingsFromFile() {
   try {
     const raw = await fs.readFile(SETTINGS_FILE, 'utf8');
@@ -249,6 +254,8 @@ async function loadSettingsFromFile() {
   }
 }
 
+// Sauvegarde la configuration courante sur disque pour persistance
+// entre deux redémarrages du serveur.
 async function saveSettingsToFile() {
   try {
     await fs.writeFile(SETTINGS_FILE, JSON.stringify(currentSettings, null, 2), 'utf8');
@@ -259,6 +266,7 @@ async function saveSettingsToFile() {
 }
 
 client.on('connect', () => {
+  // Bloc de gestion de connexion MQTT : statut global + abonnement topic.
   console.log('[MQTT] Connecté au broker');
   io.emit('mqtt_status', { connected: true });
   client.subscribe(TOPIC_TELEMETRY, (err) => {
@@ -271,16 +279,20 @@ client.on('connect', () => {
 });
 
 client.on('error', (error) => {
+  // Bloc de gestion des erreurs MQTT : journalisation + statut client UI.
   console.error('[MQTT] Erreur:', error.message);
   io.emit('mqtt_status', { connected: false });
 });
 
 client.on('close', () => {
+  // Bloc de gestion de fermeture MQTT : bascule l'état de connexion côté UI.
   console.log('[MQTT] Déconnecté du broker');
   io.emit('mqtt_status', { connected: false });
 });
 
 client.on('message', async (topic, message) => {
+  // Bloc principal de traitement télémétrie MQTT : parse, normalisation,
+  // throttling, persistance InfluxDB et diffusion temps réel via WebSocket.
   if (topic === TOPIC_TELEMETRY) {
     try {
       const data = JSON.parse(message.toString());
@@ -319,6 +331,7 @@ client.on('message', async (topic, message) => {
 
 // Canal temps réel navigateur <-> serveur
 io.on('connection', (socket) => {
+  // Session WebSocket d'un client navigateur : auth, commandes et lifecycle.
   console.log('[WebSocket] Client connecté:', socket.id);
   let authenticatedUser = null;
 
@@ -327,6 +340,7 @@ io.on('connection', (socket) => {
 
   // Connexion sécurisée du client web
   socket.on('auth', async (token) => {
+    // Authentifie la session socket avec le JWT fourni par le front.
     try {
       // Vérifie le token
       const decoded = jwt.verify(token, JWT_SECRET);
@@ -351,6 +365,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('cmd', (cmd) => {
+    // Reçoit une commande utilisateur et la republie sur MQTT si autorisé.
     // Refuse les commandes si l'utilisateur n'est pas connecté
     if (!authenticatedUser) {
       socket.emit('cmd_ack', { cmd, status: 'error', message: 'Non authentifié' });
@@ -367,6 +382,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    // Nettoyage/traçage à la déconnexion d'un client web.
     console.log('[WebSocket] Client déconnecté:', socket.id);
   });
 });
@@ -374,10 +390,12 @@ io.on('connection', (socket) => {
 // API HTTP
 
 app.get('/api/settings', authenticateToken, (req, res) => {
+  // Retourne la configuration active à un utilisateur authentifié.
   res.json(currentSettings);
 });
 
 app.post('/api/settings', authenticateToken, async (req, res) => {
+  // Met à jour les paramètres depuis l'UI puis les persiste sur disque.
   currentSettings = mergeSettings(defaultSettings, req.body || {});
   await saveSettingsToFile();
   res.json({ message: 'Paramètres mis à jour', settings: currentSettings });
@@ -385,6 +403,8 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
 
 // Retourne l'historique des mesures
 app.get('/api/history', async (req, res) => {
+  // Construit et exécute une requête Flux pour renvoyer l'historique
+  // des mesures sur les dernières 24h, limité par query param.
   if (!queryApi) {
     return res.json({ message: 'InfluxDB désactivé', data: [] });
   }
@@ -434,6 +454,7 @@ app.get('/api/history', async (req, res) => {
 
 // Retourne les moyennes sur 24h
 app.get('/api/stats', async (req, res) => {
+  // Agrège des moyennes 24h par champ afin d'alimenter les stats globales.
   if (!queryApi) {
     return res.json({ message: 'InfluxDB désactivé', stats: {} });
   }
@@ -478,6 +499,7 @@ app.get('/api/stats', async (req, res) => {
 
 // Se connecter
 app.post('/api/login', async (req, res) => {
+  // Vérifie les identifiants utilisateur et émet un JWT signé (7 jours).
   try {
     const { username, password } = req.body;
     
@@ -523,6 +545,7 @@ app.post('/api/login', async (req, res) => {
 
 // Créer un compte (bloqué en production)
 app.post('/api/register', async (req, res) => {
+  // Crée un compte public uniquement hors production (mode dev).
   // En production, la création de compte public est désactivée
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ error: 'Inscription désactivée en production' });
@@ -558,6 +581,7 @@ app.post('/api/register', async (req, res) => {
 
 // Se déconnecter
 app.post('/api/logout', authenticateToken, async (req, res) => {
+  // Invalide une session stockée en base (si table sessions utilisée).
   try {
     const token = req.headers['authorization'].split(' ')[1];
     await pgPool.query('DELETE FROM sessions WHERE token = $1', [token]);
@@ -569,6 +593,7 @@ app.post('/api/logout', authenticateToken, async (req, res) => {
 
 // Liste des utilisateurs
 app.get('/api/users', async (req, res) => {
+  // Liste les utilisateurs pour affichage/diagnostic côté front.
   try {
     const result = await pgPool.query('SELECT id, username, email, created_at, is_active FROM users ORDER BY created_at DESC');
     res.json(result.rows);
@@ -582,6 +607,7 @@ app.get('/api/users', async (req, res) => {
 
 // Vérifie le token administrateur
 function requireAdminToken(req, res, next) {
+  // Middleware d'administration : contrôle strict du header x-admin-token.
   const adminToken = req.headers['x-admin-token'];
   const expectedToken = process.env.ADMIN_SECRET_TOKEN;
 
@@ -598,6 +624,7 @@ function requireAdminToken(req, res, next) {
 
 // Admin : voir tous les utilisateurs
 app.get('/api/admin/users', requireAdminToken, async (req, res) => {
+  // Endpoint admin pour consulter tous les utilisateurs avec métadonnées.
   try {
     const result = await pgPool.query('SELECT id, username, email, created_at, last_login, is_active FROM users ORDER BY created_at DESC');
     res.json(result.rows);
@@ -609,6 +636,7 @@ app.get('/api/admin/users', requireAdminToken, async (req, res) => {
 
 // Admin : créer un utilisateur
 app.post('/api/admin/users', requireAdminToken, async (req, res) => {
+  // Endpoint admin pour créer un utilisateur (hash bcrypt côté serveur).
   try {
     const { username, password, email } = req.body;
 
@@ -639,6 +667,7 @@ app.post('/api/admin/users', requireAdminToken, async (req, res) => {
 
 // Admin : supprimer un utilisateur
 app.delete('/api/admin/users/:id', requireAdminToken, async (req, res) => {
+  // Endpoint admin pour supprimer un utilisateur via son identifiant.
   try {
     const { id } = req.params;
     const result = await pgPool.query('DELETE FROM users WHERE id = $1 RETURNING username', [id]);
@@ -658,6 +687,7 @@ app.delete('/api/admin/users/:id', requireAdminToken, async (req, res) => {
 
 // Suppression utilisateur (bloquée en production)
 app.delete('/api/users/:id', async (req, res) => {
+  // Suppression "standard" désactivée en production pour sécurité.
   // En production, la suppression directe est désactivée
   if (process.env.NODE_ENV === 'production') {
     return res.status(403).json({ error: 'Suppression désactivée en production' });
@@ -674,6 +704,7 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
+  // Sonde de santé pour Docker/monitoring (process + dépendances).
   res.json({
     status: 'ok',
     mqtt: client.connected,
@@ -688,6 +719,7 @@ const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0'; // Rend le service accessible depuis le réseau
 
 async function startServer() {
+  // Démarrage ordonné : paramètres -> bases -> écoute HTTP/WebSocket.
   await loadSettingsFromFile();
   await initDatabases();
   
@@ -706,6 +738,7 @@ async function startServer() {
 
 // Arrêt propre du serveur
 process.on('SIGTERM', async () => {
+  // Arrêt propre : flush InfluxDB, fermeture pool PG/MQTT/HTTP.
   console.log('[SERVER] Arrêt en cours...');
   
   // Vide le buffer InfluxDB avant arrêt

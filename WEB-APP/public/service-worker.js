@@ -1,4 +1,5 @@
 const CACHE_NAME = 'plant-pwa-v4';
+// Fichiers cœur de l'application (app shell) pré-cachés.
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -10,6 +11,7 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Installation SW: pré-cache de l'app shell puis activation accélérée.
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
   );
@@ -17,6 +19,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Activation SW: nettoyage des anciens caches + prise de contrôle immédiate.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -30,12 +33,14 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  // Canal de contrôle depuis la page pour activer un worker en attente.
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
 self.addEventListener('fetch', (event) => {
+  // Stratégie réseau/cache selon le type de requête (assets, navigation, autres).
   const { request } = event;
   const url = new URL(request.url);
 
@@ -46,6 +51,7 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/icons/');
 
   if (isManifestOrIcon) {
+    // Manifest/icônes: réseau d'abord pour capter les mises à jour visuelles.
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -59,6 +65,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (request.mode === 'navigate') {
+    // Navigation HTML: réseau d'abord avec fallback sur l'index en cache.
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -72,6 +79,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
+    // Assets génériques: cache d'abord, sinon réseau puis mise en cache.
     caches.match(request).then((cached) => {
       if (cached) return cached;
       return fetch(request)

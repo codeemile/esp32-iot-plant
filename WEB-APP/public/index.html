@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <!-- Métadonnées PWA + mobile -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e293b">
@@ -8,6 +9,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Serre ESP32">
   <title>Serre connectée</title>
+  <!-- Ressources statiques: manifest, icônes, socket, graphique, styles -->
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png">
@@ -36,6 +38,7 @@
 
 <!-- Contenu principal: capteurs, paramètres, graphique -->
 <main>
+  <!-- Bloc visualisation capteurs + commandes manuelles/auto -->
   <section>
     <div class="section-header">
       <h2>Capteurs</h2>
@@ -172,6 +175,7 @@
     </div>
   </section>
 
+  <!-- Bloc configuration des seuils et automatisations -->
   <section id="settings-section">
     <h2>⚙️ Paramètres</h2>
     <h3>Réglage des seuils</h3>
@@ -225,6 +229,7 @@
     </div>
   </section>
 
+  <!-- Bloc historique avec contrôles de zoom -->
   <section id="chart-section">
     <div class="section-header">
       <h2>📈 Historique</h2>
@@ -239,6 +244,7 @@
   </section>
 </main>
 
+<!-- Script applicatif principal (pilotage UI + WebSocket + API) -->
 <script src="app.js"></script>
 </body>
 </html>

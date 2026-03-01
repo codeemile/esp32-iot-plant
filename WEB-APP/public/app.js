@@ -44,6 +44,8 @@ const LOGIN_COLLAPSED_CLASS = 'is-collapsed';
 let deferredInstallPrompt = null;
 let installPromptTriggered = false;
 
+// Attache des interactions utilisateur natives (clic/touche)
+// pour déclencher l'installation PWA au bon moment navigateur.
 function attachNativeInstallPrompt() {
   const triggerPrompt = async () => {
     if (!deferredInstallPrompt || installPromptTriggered) return;
@@ -65,6 +67,7 @@ function attachNativeInstallPrompt() {
 }
 
 // === Fonctions de connexion utilisateur ===
+// Affiche/masque le message d'erreur dans le panneau de connexion.
 function setLoginError(msg) {
   const el = document.getElementById('login-error');
   if (msg) {
@@ -76,6 +79,7 @@ function setLoginError(msg) {
   }
 }
 
+// Active les boutons de contrôle quand l'utilisateur est authentifié.
 function enableButtons() {
   console.log('[DEBUG] enableButtons()');
   const ledBtn = document.getElementById('led-btn');
@@ -92,6 +96,7 @@ function enableButtons() {
   if (fanAuto) fanAuto.disabled = false;
 }
 
+// Désactive les contrôles sensibles quand l'utilisateur est anonyme.
 function disableButtons() {
   console.log('[DEBUG] disableButtons()');
   const ledBtn = document.getElementById('led-btn');
@@ -108,6 +113,7 @@ function disableButtons() {
   if (fanAuto) fanAuto.disabled = true;
 }
 
+// Bascule l'UI en mode "connecté" (chip utilisateur + bouton logout).
 function showAuthInfo() {
   const loginInputs = document.querySelector('.login-inputs');
   const authStatus = document.getElementById('auth-status');
@@ -126,6 +132,7 @@ function showAuthInfo() {
   }
 }
 
+// Termine la session locale (token + UI) et remet l'état invité.
 function logout() {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('username');
@@ -163,6 +170,7 @@ if (token) {
 }
 
 function handleLoginToggle() {
+  // Gère le bouton unique "Connexion / Se connecter" selon l'état courant.
   if (isAuthenticated) return;
 
   const loginFields = document.getElementById('login-fields');
@@ -180,6 +188,7 @@ function handleLoginToggle() {
 }
 
 async function handleLogin() {
+  // Envoie la demande de login à l'API et stocke le JWT en localStorage.
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
 
@@ -221,6 +230,7 @@ async function handleLogin() {
 
 // === Événements temps réel ===
 socket.on('connect', () => {
+  // Ré-authentifie automatiquement le socket après reconnexion réseau.
   console.log('[WebSocket] Connecté');
   if (token) {
     socket.emit('auth', token);
@@ -228,6 +238,7 @@ socket.on('connect', () => {
 });
 
 socket.on('mqtt_status', (data) => {
+  // Met à jour l'indicateur visuel ON/OFF du broker MQTT.
   const statusEl = document.getElementById('status');
   if (!statusEl) return;
   if (data.connected) {
@@ -240,6 +251,7 @@ socket.on('mqtt_status', (data) => {
 });
 
 socket.on('auth_success', (data) => {
+  // Applique les privilèges UI quand le backend valide le token.
   enableButtons();
   isAuthenticated = true;
   console.log('Authentifié:', data.username);
@@ -247,12 +259,14 @@ socket.on('auth_success', (data) => {
 });
 
 socket.on('auth_error', (data) => {
+  // Révoque les actions sensibles si l'auth socket échoue.
   disableButtons();
   isAuthenticated = false;
   console.error('Erreur auth:', data.message);
 });
 
 socket.on('disconnect', () => {
+  // Réinitialise le badge de statut quand la socket se coupe.
   const statusEl = document.getElementById('status');
   if (statusEl) {
     statusEl.classList.remove('connected');
@@ -261,6 +275,7 @@ socket.on('disconnect', () => {
 });
 
 // === Mise à jour des capteurs ===
+// Met à jour une bulle capteur (valeur + classe visuelle selon seuils).
 function update(id, val, min, max) {
   const el = document.getElementById(id);
   const bubble = document.getElementById(id + '-bubble');
@@ -275,6 +290,7 @@ function update(id, val, min, max) {
   el.textContent = Math.round(val);
 }
 
+// Met à jour l'indicateur de niveau d'eau avec un état lisible.
 function updateWaterLevel(isFull) {
   const el = document.getElementById('water-level');
   const bubble = document.getElementById('water-bubble');
@@ -293,6 +309,8 @@ function updateWaterLevel(isFull) {
   }
 }
 
+// Fusionne des paramètres reçus avec les valeurs locales par défaut
+// pour garantir des structures complètes et cohérentes.
 function mergeLocalSettings(incoming = {}) {
   const merged = JSON.parse(JSON.stringify(defaultSettings));
   const incomingThresholds = incoming.thresholds || {};
@@ -317,6 +335,7 @@ function mergeLocalSettings(incoming = {}) {
   return merged;
 }
 
+// Met à jour l'état visuel d'un bouton d'équipement (ON/OFF manuel).
 function setDeviceButtonState(type, isOn) {
   states[type] = Boolean(isOn);
   const button = document.getElementById(deviceConfig[type]?.btnId);
@@ -325,6 +344,7 @@ function setDeviceButtonState(type, isOn) {
   else button.classList.remove('on');
 }
 
+// Met à jour l'état visuel + checkbox d'un mode automatique.
 function setAutomationVisualState(type, enabled) {
   automationStates[type] = Boolean(enabled);
   const autoInput = document.getElementById(deviceConfig[type]?.autoId);
@@ -336,12 +356,14 @@ function setAutomationVisualState(type, enabled) {
   }
 }
 
+// Envoie la commande MQTT logique pour un équipement ciblé.
 function sendDeviceCommand(type, shouldBeOn) {
   const cmd = deviceConfig[type]?.cmd;
   if (!cmd) return;
   socket.emit('cmd', shouldBeOn ? `${cmd}_ON` : `${cmd}_OFF`);
 }
 
+// Applique la règle d'automatisation d'un équipement selon télémétrie.
 function applyAutomationForDevice(type, telemetry) {
   const thresholds = settingsCache.thresholds;
   let desiredState = null;
@@ -372,6 +394,7 @@ function applyAutomationForDevice(type, telemetry) {
   sendDeviceCommand(type, desiredState);
 }
 
+// Lance les automations activées pour les 3 équipements pilotables.
 function runAutomations(telemetry) {
   if (!isAuthenticated || !telemetry) return;
   if (automationStates.led) applyAutomationForDevice('led', telemetry);
@@ -379,11 +402,13 @@ function runAutomations(telemetry) {
   if (automationStates.fan) applyAutomationForDevice('fan', telemetry);
 }
 
+// Parse un champ numérique de formulaire avec fallback sécurisé.
 function parseThresholdInput(elementId, fallbackValue) {
   const parsed = Number(document.getElementById(elementId)?.value);
   return Number.isFinite(parsed) ? parsed : fallbackValue;
 }
 
+// Construit l'objet settings à envoyer au backend depuis le formulaire.
 function collectSettingsFromUi() {
   return {
     thresholds: {
@@ -417,6 +442,7 @@ function collectSettingsFromUi() {
   };
 }
 
+// Répercute `settingsCache` vers les champs UI et toggles auto.
 function applySettingsToUi() {
   document.getElementById('lux-min').value = settingsCache.thresholds.lux.min;
   document.getElementById('lux-max').value = settingsCache.thresholds.lux.max;
@@ -434,6 +460,7 @@ function applySettingsToUi() {
   setAutomationVisualState('fan', settingsCache.automations.fan);
 }
 
+// Gestion d'un toggle auto : sécurité auth, persist, application immédiate.
 async function handleAutomationToggle(type, enabled) {
   if (!isAuthenticated) {
     const autoInput = document.getElementById(deviceConfig[type]?.autoId);
@@ -452,6 +479,7 @@ async function handleAutomationToggle(type, enabled) {
   await saveSettings(false);
 }
 
+// Contrôle manuel d'un équipement (hors mode auto).
 function toggle(type, cmd) {
   if (!isAuthenticated) {
     setLoginError('');
@@ -466,6 +494,7 @@ function toggle(type, cmd) {
   socket.emit('cmd', nextState ? cmd + '_ON' : cmd + '_OFF');
 }
 
+// Ouvre/ferme la section paramètres, avec chargement à l'ouverture.
 function toggleSettingsSection() {
   if (!isAuthenticated) {
     alert('Veuillez vous connecter pour accéder aux paramètres');
@@ -482,6 +511,8 @@ function toggleSettingsSection() {
 }
 
 socket.on('telemetry', d => {
+  // Pipeline front de télémétrie : UI instantanée, historique, sync boutons,
+  // puis exécution éventuelle des automatismes.
   if (!d) return;
   latestTelemetry = d;
   const thresholds = settingsCache.thresholds;
@@ -530,6 +561,7 @@ socket.on('telemetry', d => {
 });
 
 // === Graphique ===
+// Rend ou met à jour le graphique Chart.js à partir des points historiques.
 function renderChart(data) {
   if (!data || data.length === 0) return;
   
@@ -642,6 +674,7 @@ function renderChart(data) {
   });
 }
 
+// Charge les 100 derniers points depuis l'API et initialise le graphique.
 function loadChart() {
   maxScale = BASE_SCALE; // Remet le zoom par défaut
   fetch('/api/history?limit=100')
@@ -654,6 +687,7 @@ function loadChart() {
 }
 
 // === Paramètres ===
+// Charge les paramètres serveur et les applique au front local.
 async function loadSettings() {
   try {
     const response = await fetch('/api/settings', {
@@ -673,6 +707,7 @@ async function loadSettings() {
   }
 }
 
+// Sauvegarde les paramètres vers l'API avec messages utilisateur.
 async function saveSettings(showAlert = true) {
   try {
     const settings = collectSettingsFromUi();
@@ -717,17 +752,20 @@ async function saveSettings(showAlert = true) {
 
 // === Zoom du graphique ===
 // On change seulement la hauteur max de l'axe Y pour zoomer simplement.
+// Applique la valeur de zoom courante sur l'axe Y.
 function applyZoom() {
   if (!chart) return;
   chart.options.scales.y.max = Math.round(maxScale);
   chart.update('none');
 }
 
+// Zoom avant (réduction max axe Y).
 function zoomIn() {
   maxScale /= ZOOM_MULTIPLIER; 
   applyZoom();
 }
 
+// Zoom arrière (augmentation max axe Y, avec borne haute).
 function zoomOut() {
   maxScale *= ZOOM_MULTIPLIER;
   if (maxScale > 100000) maxScale = 100000; // Évite un zoom trop grand
@@ -736,6 +774,7 @@ function zoomOut() {
 
 // Zoom avec la molette de la souris
 document.addEventListener('DOMContentLoaded', () => {
+  // Active le zoom molette uniquement sur la zone graphique.
   const chartWrapper = document.getElementById('chart-wrapper');
   if (chartWrapper) {
     chartWrapper.addEventListener('wheel', (e) => {
@@ -757,6 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
 loadChart();
 
 window.addEventListener('beforeinstallprompt', (event) => {
+  // Intercepte le prompt PWA natif pour déclenchement contrôlé.
   event.preventDefault();
   deferredInstallPrompt = event;
   installPromptTriggered = false;
@@ -764,13 +804,16 @@ window.addEventListener('beforeinstallprompt', (event) => {
 });
 
 window.addEventListener('appinstalled', () => {
+  // Nettoie l'état local une fois l'installation PWA effectuée.
   deferredInstallPrompt = null;
   installPromptTriggered = true;
 });
 
 if ('serviceWorker' in navigator) {
+  // Gestion de cycle service worker : registration, update et refresh auto.
   let hasRefreshedForSw = false;
 
+  // Force l'activation immédiate d'un worker en attente.
   const activateUpdate = (registration) => {
     if (registration.waiting) {
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
