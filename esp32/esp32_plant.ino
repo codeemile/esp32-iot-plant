@@ -9,23 +9,21 @@
 
 // ================= RÉGLAGES MQTT =================
 // Adresse et port du serveur MQTT
-const char* MQTT_HOST = "192.168.1.100";
+const char* MQTT_HOST = "172.16.8.111";
 const int   MQTT_PORT = 1883;
 // Identifiants MQTT (laisser vide si le broker accepte les connexions anonymes)
 const char* MQTT_USER = "";  // Vide = pas d'identifiant
 const char* MQTT_PASS = "";
-// ==========================================================
+// =================================================
 
 // === Branchements des broches ===
 #define I2C_SDA 22          // Fil SDA (communication capteurs I2C)
 #define I2C_SCL 21          // Fil SCL (communication capteurs I2C)
 #define SOIL_PIN 34         // Lecture humidité du sol
 #define WATER_LEVEL_PIN 35  // Détection niveau d'eau (plein/vide)
-#define LED_PIN 10          // Commande LED
+#define LED_PIN 2           // Commande LED
 #define FAN_PIN 14          // Commande ventilateur
 #define HUMIDIFIER_PIN 27   // Commande humidificateur
-#define CTP_SDA 2           // Réservé (non utilisé ici)
-#define CTP_SCL 15          // Réservé (non utilisé ici)
 
 const char* WIFI_SSID = "CFAINSTA_STUDENTS";
 const char* WIFI_PASS = "Cf@InSt@-$tUd3nT";

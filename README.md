@@ -197,6 +197,8 @@ npm start
 - PubSubClient
 - Wire
 - BH1750
+- Adafruit_BME280
+- adafruit_sensor
 
 #### Câblage
 ```
@@ -210,6 +212,16 @@ ESP32          Capteur Sol
 GPIO 34   -->  AOUT
 3.3V      -->  VCC
 GND       -->  GND
+
+ESP32          BME280
+GPIO 22   -->  SDA
+GPIO 21   -->  SCL
+3.3V      -->  VCC
+GND       -->  GND
+
+ESP32          Capteur de niveau d'eau
+GPIO 35   -->  IN
+GND       -->  OUT
 
 ESP32          Actionneurs
 GPIO 2    -->  LED
