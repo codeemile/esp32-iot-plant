@@ -274,6 +274,19 @@ socket.on('disconnect', () => {
   }
 });
 
+socket.on('device_state', (state) => {
+  if (!state) return;
+  if (typeof state.led === 'boolean') {
+    setDeviceButtonState('led', state.led);
+  }
+  if (typeof state.hum === 'boolean') {
+    setDeviceButtonState('hum', state.hum);
+  }
+  if (typeof state.fan === 'boolean') {
+    setDeviceButtonState('fan', state.fan);
+  }
+});
+
 // === Mise à jour des capteurs ===
 // Met à jour une bulle capteur (valeur + classe visuelle selon seuils).
 function update(id, val, min, max) {
@@ -679,7 +692,8 @@ function loadChart() {
   maxScale = BASE_SCALE; // Remet le zoom par défaut
   fetch('/api/history?limit=100')
     .then(r => r.json())
-    .then(data => {
+    .then(payload => {
+      const data = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
       chartData = data;
       renderChart(chartData);
     })

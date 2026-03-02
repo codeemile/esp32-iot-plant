@@ -71,6 +71,7 @@ const TOPIC_TELEMETRY = 'tp/esp32/telemetry';
 const TOPIC_CMD = 'tp/esp32/cmd';
 let lastTelemetrySent = 0;
 const MIN_SEND_INTERVAL = 2000; // Envoi limité à un message toutes les 2 secondes
+let sharedDeviceStates = { led: false, hum: false, fan: false };
 
 const app = express();
 const server = http.createServer(app);
@@ -318,11 +319,22 @@ client.on('message', async (topic, message) => {
       data.pressure = Math.round(data.pressure);
       data.rssi = Math.round(data.rssi);
 
+      if (typeof data.led_on === 'boolean') {
+        sharedDeviceStates.led = data.led_on;
+      }
+      if (typeof data.humidifier_on === 'boolean') {
+        sharedDeviceStates.hum = data.humidifier_on;
+      }
+      if (typeof data.fan_on === 'boolean') {
+        sharedDeviceStates.fan = data.fan_on;
+      }
+
       // Sauvegarde en base
       saveTelemetryToInflux(data);
 
       // Envoi en temps réel à l'interface web
       io.emit('telemetry', data);
+      io.emit('device_state', sharedDeviceStates);
     } catch (error) {
       console.error('[MQTT] Erreur traitement message:', error.message);
     }
@@ -337,6 +349,7 @@ io.on('connection', (socket) => {
 
   // Informe le client si MQTT est connecté
   socket.emit('mqtt_status', { connected: client.connected });
+  socket.emit('device_state', sharedDeviceStates);
 
   // Connexion sécurisée du client web
   socket.on('auth', async (token) => {
@@ -376,6 +389,15 @@ io.on('connection', (socket) => {
     if (client.connected) {
       client.publish(TOPIC_CMD, cmd);
       socket.emit('cmd_ack', { cmd, status: 'sent' });
+
+      if (cmd === 'LED_ON') sharedDeviceStates.led = true;
+      if (cmd === 'LED_OFF') sharedDeviceStates.led = false;
+      if (cmd === 'HUM_ON') sharedDeviceStates.hum = true;
+      if (cmd === 'HUM_OFF') sharedDeviceStates.hum = false;
+      if (cmd === 'FAN_ON') sharedDeviceStates.fan = true;
+      if (cmd === 'FAN_OFF') sharedDeviceStates.fan = false;
+
+      io.emit('device_state', sharedDeviceStates);
     } else {
       socket.emit('cmd_ack', { cmd, status: 'error', message: 'MQTT non connecté' });
     }
@@ -406,7 +428,7 @@ app.get('/api/history', async (req, res) => {
   // Construit et exécute une requête Flux pour renvoyer l'historique
   // des mesures sur les dernières 24h, limité par query param.
   if (!queryApi) {
-    return res.json({ message: 'InfluxDB désactivé', data: [] });
+    return res.json([]);
   }
 
   try {
