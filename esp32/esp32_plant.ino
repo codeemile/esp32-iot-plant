@@ -217,8 +217,7 @@ void loop() {
       pressurehPa = pressurePa / 100;
     }
 
-    int waterRaw = digitalRead(WATER_LEVEL_PIN);
-    bool waterFull = (waterRaw == HIGH);
+    bool waterLevel = (digitalRead(WATER_LEVEL_PIN) == LOW);
 
     // Message d'aide dans le moniteur série
     if (lux < 0) Serial.println("[ERROR] BH1750 pas disponible - vérifier connexion I2C");
@@ -229,7 +228,7 @@ void loop() {
                      ",\"humidite_air\":" + String(humidity) +
                      ",\"pressure\":" + String(pressurehPa) +
                      ",\"rssi\":" + String(WiFi.RSSI()) + 
-                     ",\"water_full\":" + (waterFull ? "true" : "false") +
+                     ",\"water_full\":" + (waterLevel ? "true" : "false") +
                      ",\"led_on\":" + (ledOn ? "true" : "false") +
                      ",\"fan_on\":" + (fanOn ? "true" : "false") +
                      ",\"humidifier_on\":" + (humidifierOn ? "true" : "false") + "}";

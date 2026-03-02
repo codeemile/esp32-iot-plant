@@ -27,9 +27,12 @@ Configurer ensuite les secrets dans `.env`.
 cd /opt/esp32-iot-plant
 sudo chmod +x deploy/autoupdate.sh
 sudo usermod -aG docker deploy
+sudo apt-get update && sudo apt-get install -y util-linux
 ```
 
 > Remplace `deploy` par ton utilisateur Linux si besoin.
+
+`util-linux` est requis pour la commande `flock` utilisée par le verrou anti-exécutions simultanées.
 
 ## 3) Installer le service systemd
 
@@ -47,6 +50,7 @@ sudo cp deploy/systemd/esp32-iot-autoupdate.service /etc/systemd/system/
 sudo cp deploy/systemd/esp32-iot-autoupdate.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now esp32-iot-autoupdate.timer
+sudo systemctl restart esp32-iot-autoupdate.timer
 ```
 
 ## 4) Vérifier
@@ -71,4 +75,6 @@ Dans le service `systemd` :
 
 - Le script utilise un lock (`flock`) pour éviter deux runs simultanés.
 - Le `git pull` est en `--ff-only` pour éviter les merges automatiques inattendus.
+- Le script force le checkout de la branche configurée si le dépôt est sur une autre branche (ou en detached HEAD).
+- L'unité `systemd` définit un `PATH` explicite pour garantir l'accès à `git`, `docker` et `docker compose`.
 - Fréquence actuelle du timer: toutes les 2 minutes (`OnUnitActiveSec=2min`).

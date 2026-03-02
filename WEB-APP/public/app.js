@@ -287,6 +287,12 @@ socket.on('device_state', (state) => {
   }
 });
 
+socket.on('settings_updated', (incomingSettings) => {
+  settingsCache = mergeLocalSettings(incomingSettings);
+  applySettingsToUi();
+  runAutomations(latestTelemetry);
+});
+
 // === Mise à jour des capteurs ===
 // Met à jour une bulle capteur (valeur + classe visuelle selon seuils).
 function update(id, val, min, max) {

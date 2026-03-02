@@ -420,6 +420,7 @@ app.post('/api/settings', authenticateToken, async (req, res) => {
   // Met à jour les paramètres depuis l'UI puis les persiste sur disque.
   currentSettings = mergeSettings(defaultSettings, req.body || {});
   await saveSettingsToFile();
+  io.emit('settings_updated', currentSettings);
   res.json({ message: 'Paramètres mis à jour', settings: currentSettings });
 });
 
