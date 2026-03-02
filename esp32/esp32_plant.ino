@@ -38,8 +38,6 @@ Adafruit_BME280 bme; // Capteur météo en I2C
 // Permet de savoir si les capteurs sont bien détectés
 bool bh1750_ok = false;
 bool bme280_ok = false;
-// Valeur de référence de pression atmosphérique
-const float SEA_LEVEL_HPA = 1013.25;
 
 // État actuel des sorties
 bool ledOn = false;
@@ -50,10 +48,6 @@ unsigned long lastSend = 0;
 unsigned long lastRetry = 0;
 const int retryInterval = 5000;     // Réessayer la connexion toutes les 5 secondes
 const int sendInterval = 5000;      // Envoyer les mesures toutes les 5 secondes
-
-// Type de capteur de niveau d'eau
-const bool WATER_LEVEL_ACTIVE_LOW = true; // true = capteur actif quand la broche est LOW
-
 
 // === Réception des commandes à distance ===
 void onMessage(char* topic, byte* payload, unsigned int length) {
@@ -224,7 +218,7 @@ void loop() {
     }
 
     int waterRaw = digitalRead(WATER_LEVEL_PIN);
-    bool waterFull = WATER_LEVEL_ACTIVE_LOW ? (waterRaw == LOW) : (waterRaw == HIGH);
+    bool waterFull = (waterRaw == HIGH);
 
     // Message d'aide dans le moniteur série
     if (lux < 0) Serial.println("[ERROR] BH1750 pas disponible - vérifier connexion I2C");
