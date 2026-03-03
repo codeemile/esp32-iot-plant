@@ -880,6 +880,8 @@ async function saveSettings(showAlert = true) {
 // Applique la valeur de zoom courante sur l'axe Y.
 function applyZoom() {
   if (!chart) return;
+  if (maxScale < 1) maxScale = 1;
+  chart.options.scales.y.min = 0;
   chart.options.scales.y.max = Math.round(maxScale);
   chart.update('none');
 }
