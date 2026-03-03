@@ -507,6 +507,7 @@ button,
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  width: 100%;
 }
 
 .setting-group label {
@@ -518,13 +519,14 @@ button,
 .threshold-inputs {
   display: flex;
   align-items: flex-end;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
+  width: 100%;
 }
 
 .threshold-field {
-  flex: 0 0 auto;
-  width: 110px;
+  flex: 1 1 0;
+  min-width: 140px;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -547,23 +549,6 @@ button,
   font-size: 0.85rem;
 }
 
-.threshold-inputs.single-input {
-  justify-content: flex-start;
-}
-
-.threshold-inputs.single-input .threshold-field {
-  width: 100%;
-}
-
-.durations-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.durations-grid .setting-group {
-  min-width: 0;
-}
 .threshold-inputs select {
   flex: 1;
   padding: 0.4rem;
@@ -590,6 +575,33 @@ button,
   font-weight: 600;
   min-width: 1rem;
   text-align: center;
+}
+
+.threshold-inputs.single-input {
+  justify-content: flex-start;
+}
+
+.threshold-inputs.single-input .threshold-field {
+  max-width: none;
+}
+
+.durations-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.durations-grid .setting-group {
+  min-width: 0;
+}
+
+.durations-grid .threshold-inputs {
+  width: 100%;
+}
+
+.durations-grid .threshold-inputs .threshold-field {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .save-btn {
@@ -698,6 +710,7 @@ button,
   .threshold-field,
   .threshold-inputs.single-input .threshold-field {
     width: 100%;
+    max-width: 100%;
   }
 
   .durations-grid {

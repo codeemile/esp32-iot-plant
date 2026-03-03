@@ -478,9 +478,16 @@ function applyAutomationForDevice(type, telemetry) {
 
   if (type === 'fan') {
     const temp = Number(telemetry.temperature);
-    if (!Number.isFinite(temp)) return;
-    if (temp >= thresholds.temp.max) desiredState = true;
-    else if (temp <= thresholds.temp.min) desiredState = false;
+    const airHumidity = Number(telemetry.humidite_air);
+    if (!Number.isFinite(temp) && !Number.isFinite(airHumidity)) return;
+
+    const tempHigh = Number.isFinite(temp) && temp >= thresholds.temp.max;
+    const airHigh = Number.isFinite(airHumidity) && airHumidity >= thresholds.air.max;
+    const tempLow = Number.isFinite(temp) && temp <= thresholds.temp.min;
+    const airLow = Number.isFinite(airHumidity) && airHumidity <= thresholds.air.max;
+
+    if (tempHigh || airHigh) desiredState = true;
+    else if (tempLow && airLow) desiredState = false;
   }
 
   if (desiredState === null) return;
