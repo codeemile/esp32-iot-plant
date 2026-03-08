@@ -1,13 +1,14 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <!-- Métadonnées PWA + mobile -->
+  <!-- Métadonnées Progressive Web App + mobile -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e293b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Serre ESP32">
+
   <title>Serre connectée</title>
   <!-- Ressources statiques: manifest, icônes, socket, graphique, styles -->
   <link rel="manifest" href="/manifest.webmanifest">
@@ -27,8 +28,11 @@
     <div class="login-fields is-collapsed" id="login-fields">
       <div class="login-inputs">
         <input type="text" id="username" placeholder="Utilisateur">
+        <input type="email" id="email" placeholder="Email" style="display:none;">
         <input type="password" id="password" placeholder="Mot de passe">
+        <input type="password" id="password-confirm" placeholder="Confirmer le mot de passe" style="display:none;">
       </div>
+      <div id="auth-mode-hint" class="auth-mode-hint"></div>
     </div>
     <button class="login-btn" id="login-toggle-btn" onclick="handleLoginToggle()">Connexion</button>
     <div id="login-error"></div>
@@ -38,8 +42,9 @@
 
 <!-- Contenu principal: capteurs, paramètres, graphique -->
 <main>
+  <div id="interface-stack">
   <!-- Bloc visualisation capteurs + commandes manuelles/auto -->
-  <section>
+  <section id="interface-section">
     <div class="section-header">
       <h2>Capteurs</h2>
       <button class="ghost-btn" id="settings-toggle" onclick="toggleSettingsSection()">⚙️ Paramètres</button>
@@ -113,11 +118,11 @@
           </div>
         </div>
 
-        <!-- Signal RSSI -->
+        <!-- Signal WiFi -->
         <div class="sensor-item">
           <div class="indicator">
             <div class="bubble" id="rssi-bubble">
-              <label>Signal</label>
+              <label>WiFi</label>
               <div class="value" id="rssi">-</div>
               <div class="unit">dB</div>
             </div>
@@ -177,51 +182,271 @@
 
   <!-- Bloc configuration des seuils et automatisations -->
   <section id="settings-section">
-    <h2>⚙️ Paramètres</h2>
-    <h3>Réglage des seuils</h3>
+    <div class="overlay-panel-header">
+      <h2>⚙️ Paramètres</h2>
+      <button type="button" class="overlay-close-btn" aria-label="Fermer les paramètres" title="Fermer" onclick="closeOverlayPanel('settings-section')">✕</button>
+    </div>
     <div class="settings-content">
-      <div class="setting-group">
-        <label>🌞 Luminosité (lux)</label>
-        <div class="threshold-inputs">
-          <input type="number" id="lux-min" placeholder="Min" min="0">
-          <span class="range-sep">-</span>
-          <input type="number" id="lux-max" placeholder="Max" min="0">
+      <div class="settings-tabs" role="tablist" aria-label="Catégories paramètres">
+        <button class="settings-tab-btn active" id="tab-btn-thresholds" onclick="setActiveSettingsTab('thresholds')" role="tab" aria-selected="true">Seuils</button>
+        <button class="settings-tab-btn" id="tab-btn-automations" onclick="setActiveSettingsTab('automations')" role="tab" aria-selected="false">Automatisations</button>
+        <button class="settings-tab-btn" id="tab-btn-notifications" onclick="setActiveSettingsTab('notifications')" role="tab" aria-selected="false">Notifications</button>
+      </div>
+
+      <div class="settings-panel active" id="settings-panel-thresholds" role="tabpanel">
+        <div class="threshold-cards-grid">
+          <article class="threshold-card">
+            <header class="threshold-card-head">
+              <h3>🌞 Luminosité (lux)</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="alert-bell-lux" onclick="toggleThresholdAlertChannel('lux', 'push')" title="Activer/désactiver les notifications push pour la luminosité">🔔</button>
+                <button type="button" class="channel-btn mail-btn standby" id="alert-mail-lux" disabled title="Alertes mail en standby">✉️</button>
+              </div>
+            </header>
+            <div class="threshold-card-fields">
+              <label class="threshold-field" for="lux-min">
+                <span class="threshold-label">Min</span>
+                <div class="unit-input">
+                  <input type="number" id="lux-min" placeholder="Min" min="0">
+                  <span class="input-unit">lux</span>
+                </div>
+              </label>
+              <label class="threshold-field" for="lux-max">
+                <span class="threshold-label">Max</span>
+                <div class="unit-input">
+                  <input type="number" id="lux-max" placeholder="Max" min="0">
+                  <span class="input-unit">lux</span>
+                </div>
+              </label>
+            </div>
+          </article>
+
+          <article class="threshold-card">
+            <header class="threshold-card-head">
+              <h3>💧 Humidité du sol (%)</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="alert-bell-soil" onclick="toggleThresholdAlertChannel('soil', 'push')" title="Activer/désactiver les notifications push pour l'humidité du sol">🔔</button>
+                <button type="button" class="channel-btn mail-btn standby" id="alert-mail-soil" disabled title="Alertes mail en standby">✉️</button>
+              </div>
+            </header>
+            <div class="threshold-card-fields">
+              <label class="threshold-field" for="soil-min">
+                <span class="threshold-label">Min</span>
+                <div class="unit-input">
+                  <input type="number" id="soil-min" placeholder="Min" min="0" max="100">
+                  <span class="input-unit">%</span>
+                </div>
+              </label>
+              <label class="threshold-field" for="soil-max">
+                <span class="threshold-label">Max</span>
+                <div class="unit-input">
+                  <input type="number" id="soil-max" placeholder="Max" min="0" max="100">
+                  <span class="input-unit">%</span>
+                </div>
+              </label>
+            </div>
+          </article>
+
+          <article class="threshold-card">
+            <header class="threshold-card-head">
+              <h3>🌡️ Température (°C)</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="alert-bell-temp" onclick="toggleThresholdAlertChannel('temp', 'push')" title="Activer/désactiver les notifications push pour la température">🔔</button>
+                <button type="button" class="channel-btn mail-btn standby" id="alert-mail-temp" disabled title="Alertes mail en standby">✉️</button>
+              </div>
+            </header>
+            <div class="threshold-card-fields">
+              <label class="threshold-field" for="temp-min">
+                <span class="threshold-label">Min</span>
+                <div class="unit-input">
+                  <input type="number" id="temp-min" placeholder="Min">
+                  <span class="input-unit">°C</span>
+                </div>
+              </label>
+              <label class="threshold-field" for="temp-max">
+                <span class="threshold-label">Max</span>
+                <div class="unit-input">
+                  <input type="number" id="temp-max" placeholder="Max">
+                  <span class="input-unit">°C</span>
+                </div>
+              </label>
+            </div>
+          </article>
+
+          <article class="threshold-card">
+            <header class="threshold-card-head">
+              <h3>💨 Humidité de l'air (%)</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="alert-bell-air" onclick="toggleThresholdAlertChannel('air', 'push')" title="Activer/désactiver les notifications push pour l'humidité de l'air">🔔</button>
+                <button type="button" class="channel-btn mail-btn standby" id="alert-mail-air" disabled title="Alertes mail en standby">✉️</button>
+              </div>
+            </header>
+            <div class="threshold-card-fields">
+              <label class="threshold-field" for="air-min">
+                <span class="threshold-label">Min</span>
+                <div class="unit-input">
+                  <input type="number" id="air-min" placeholder="Min" min="0" max="100">
+                  <span class="input-unit">%</span>
+                </div>
+              </label>
+              <label class="threshold-field" for="air-max">
+                <span class="threshold-label">Max</span>
+                <div class="unit-input">
+                  <input type="number" id="air-max" placeholder="Max" min="0" max="100">
+                  <span class="input-unit">%</span>
+                </div>
+              </label>
+            </div>
+          </article>
         </div>
       </div>
 
-      <div class="setting-group">
-        <label>💧 Humidité du sol (%)</label>
-        <div class="threshold-inputs">
-          <input type="number" id="soil-min" placeholder="Min" min="0" max="100">
-          <span class="range-sep">-</span>
-          <input type="number" id="soil-max" placeholder="Max" min="0" max="100">
+      <div class="settings-panel" id="settings-panel-automations" role="tabpanel" hidden>
+        <div class="threshold-cards-grid automations-cards-grid">
+          <article class="threshold-card automation-card">
+            <header class="threshold-card-head">
+              <h3>💡 Lumière auto</h3>
+            </header>
+            <div class="threshold-card-fields single-field-row">
+              <label class="threshold-field" for="led-duration">
+                <span class="threshold-label">Durée d'activation</span>
+                <div class="unit-input">
+                  <input type="number" id="led-duration" min="10" max="21600" step="10">
+                  <span class="input-unit">s</span>
+                </div>
+              </label>
+            </div>
+          </article>
+
+          <article class="threshold-card automation-card">
+            <header class="threshold-card-head">
+              <h3>💧 Arrosage auto</h3>
+            </header>
+            <div class="threshold-card-fields single-field-row">
+              <label class="threshold-field" for="hum-duration">
+                <span class="threshold-label">Durée d'activation</span>
+                <div class="unit-input">
+                  <input type="number" id="hum-duration" min="5" max="600" step="5">
+                  <span class="input-unit">s</span>
+                </div>
+              </label>
+            </div>
+          </article>
+
+          <article class="threshold-card automation-card">
+            <header class="threshold-card-head">
+              <h3>🌀 Ventilation auto</h3>
+            </header>
+            <div class="threshold-card-fields single-field-row">
+              <label class="threshold-field" for="fan-duration">
+                <span class="threshold-label">Durée d'activation</span>
+                <div class="unit-input">
+                  <input type="number" id="fan-duration" min="10" max="3600" step="10">
+                  <span class="input-unit">s</span>
+                </div>
+              </label>
+            </div>
+          </article>
         </div>
       </div>
 
-      <div class="setting-group">
-        <label>🌡️ Température (°C)</label>
-        <div class="threshold-inputs">
-          <input type="number" id="temp-min" placeholder="Min">
-          <span class="range-sep">-</span>
-          <input type="number" id="temp-max" placeholder="Max">
-        </div>
-      </div>
+      <div class="settings-panel" id="settings-panel-notifications" role="tabpanel" hidden>
+        <div class="threshold-cards-grid notifications-cards-grid">
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>🌞 Luminosité</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-lux" onclick="toggleNotificationRuleChannel('lux', 'push')" title="Activer/désactiver Push pour la luminosité">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-lux" onclick="toggleNotificationRuleChannel('lux', 'email')" title="Activer/désactiver Mail pour la luminosité">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-lux"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-lux" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-lux"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-lux" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-lux"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-lux" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-lux"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-lux" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
 
-      <div class="setting-group">
-        <label>💨 Humidité de l'air (%)</label>
-        <div class="threshold-inputs">
-          <input type="number" id="air-min" placeholder="Min" min="0" max="100">
-          <span class="range-sep">-</span>
-          <input type="number" id="air-max" placeholder="Max" min="0" max="100">
-        </div>
-      </div>
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>💧 Humidité sol</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-soil" onclick="toggleNotificationRuleChannel('soil', 'push')" title="Activer/désactiver Push pour humidité sol">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-soil" onclick="toggleNotificationRuleChannel('soil', 'email')" title="Activer/désactiver Mail pour humidité sol">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-soil"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-soil" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-soil"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-soil" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-soil"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-soil" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-soil"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-soil" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
 
-      <div class="setting-group">
-        <label>📶 Signal RSSI (dB)</label>
-        <div class="threshold-inputs">
-          <input type="number" id="rssi-min" placeholder="Min">
-          <span class="range-sep">-</span>
-          <input type="number" id="rssi-max" placeholder="Max">
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>💨 Humidité air</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-air" onclick="toggleNotificationRuleChannel('air', 'push')" title="Activer/désactiver Push pour humidité air">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-air" onclick="toggleNotificationRuleChannel('air', 'email')" title="Activer/désactiver Mail pour humidité air">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-air"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-air" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-air"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-air" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-air"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-air" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-air"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-air" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
+
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>🌡️ Température</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-temp" onclick="toggleNotificationRuleChannel('temp', 'push')" title="Activer/désactiver Push pour température">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-temp" onclick="toggleNotificationRuleChannel('temp', 'email')" title="Activer/désactiver Mail pour température">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-temp"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-temp" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-temp"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-temp" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-temp"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-temp" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-temp"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-temp" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
+
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>📶 Signal WiFi</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-rssi" onclick="toggleNotificationRuleChannel('rssi', 'push')" title="Activer/désactiver Push pour WiFi">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-rssi" onclick="toggleNotificationRuleChannel('rssi', 'email')" title="Activer/désactiver Mail pour WiFi">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-rssi"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-rssi" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-rssi"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-rssi" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-rssi"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-rssi" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-rssi"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-rssi" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
+
+          <article class="threshold-card notification-card">
+            <header class="threshold-card-head">
+              <h3>🚰 Niveau d'eau</h3>
+              <div class="alert-channel-actions">
+                <button type="button" class="channel-btn bell-btn active" id="notif-push-water" onclick="toggleNotificationRuleChannel('water', 'push')" title="Activer/désactiver Push pour niveau d'eau">🔔</button>
+                <button type="button" class="channel-btn mail-btn" id="notif-mail-water" onclick="toggleNotificationRuleChannel('water', 'email')" title="Activer/désactiver Mail pour niveau d'eau">✉️</button>
+              </div>
+            </header>
+            <div class="notification-timing-grid">
+              <label class="threshold-field" for="notif-start-water"><span class="threshold-label">Délai notif</span><div class="unit-input"><input type="number" id="notif-start-water" min="0" max="3600" step="5"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-repeat-water"><span class="threshold-label">Répétition notif</span><div class="unit-input"><input type="number" id="notif-repeat-water" min="30" max="21600" step="10"><span class="input-unit">s</span></div></label>
+              <label class="threshold-field" for="notif-delta-water"><span class="threshold-label">Délai mail</span><div class="unit-input"><input type="number" id="notif-delta-water" min="0" max="1440" step="1"><span class="input-unit">min</span></div></label>
+              <label class="threshold-field" for="notif-reset-water"><span class="threshold-label">Délai fin d'incident</span><div class="unit-input"><input type="number" id="notif-reset-water" min="10" max="3600" step="10"><span class="input-unit">s</span></div></label>
+            </div>
+          </article>
         </div>
       </div>
 
@@ -229,7 +454,75 @@
     </div>
   </section>
 
-  <!-- Bloc historique avec contrôles de zoom -->
+  <section id="profile-section">
+    <div class="overlay-panel-header">
+      <h2>👤 Profil</h2>
+      <button type="button" class="overlay-close-btn" aria-label="Fermer le profil" title="Fermer" onclick="closeOverlayPanel('profile-section')">✕</button>
+    </div>
+    <div class="settings-content">
+      <div class="threshold-cards-grid">
+        <article class="threshold-card">
+          <header class="threshold-card-head">
+            <h3>Compte</h3>
+          </header>
+          <div class="threshold-card-fields single-field-row">
+            <label class="threshold-field" for="profile-username">
+              <span class="threshold-label">Nom utilisateur</span>
+              <input type="text" id="profile-username" maxlength="32" autocomplete="username">
+            </label>
+            <label class="threshold-field" for="profile-email">
+              <span class="threshold-label">Email</span>
+              <input type="email" id="profile-email" autocomplete="email">
+            </label>
+          </div>
+        </article>
+
+        <article class="threshold-card">
+          <header class="threshold-card-head">
+            <h3>Sécurité</h3>
+          </header>
+          <div class="threshold-card-fields single-field-row">
+            <label class="threshold-field" for="profile-current-password">
+              <span class="threshold-label">Mot de passe actuel (requis)</span>
+              <input type="password" id="profile-current-password" autocomplete="current-password">
+            </label>
+            <label class="threshold-field" for="profile-new-password">
+              <span class="threshold-label">Nouveau mot de passe</span>
+              <input type="password" id="profile-new-password" autocomplete="new-password">
+            </label>
+            <label class="threshold-field" for="profile-new-password-confirm">
+              <span class="threshold-label">Confirmer nouveau mot de passe</span>
+              <input type="password" id="profile-new-password-confirm" autocomplete="new-password">
+            </label>
+          </div>
+        </article>
+
+        <article class="threshold-card">
+          <header class="threshold-card-head">
+            <h3>Timestamps BDD</h3>
+          </header>
+          <div class="profile-timestamps">
+            <div><span>Création compte</span><strong id="profile-created-at">-</strong></div>
+            <div><span>Dernière mise à jour compte</span><strong id="profile-updated-at">-</strong></div>
+            <div><span>Dernière connexion</span><strong id="profile-last-login">-</strong></div>
+            <div><span>Dernière modif paramètres</span><strong id="profile-settings-updated-at">-</strong></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="profile-actions">
+        <button class="save-btn" onclick="saveProfile()">💾 Sauvegarder le profil</button>
+        <button class="danger-btn" onclick="deleteAccount()">🗑 Supprimer le compte</button>
+      </div>
+      <div id="profile-message" class="auth-mode-hint"></div>
+    </div>
+  </section>
+
+  </div>
+
+  <div id="layout-resizer" role="separator" aria-label="Redimensionner interface et graphique" aria-orientation="horizontal"></div>
+
+  <!-- Graphique avec contrôles de zoom -->
   <section id="chart-section">
     <div class="section-header">
       <h2>📈 Historique</h2>
@@ -244,7 +537,9 @@
   </section>
 </main>
 
-<!-- Script applicatif principal (pilotage UI + WebSocket + API) -->
-<script src="app.js"></script>
+<!-- UI pur (manipulation visuelle) -->
+<script src="front.js"></script>
+<!-- Script applicatif principal (WebSocket + API + logique metier) -->
+<script src="script.js"></script>
 </body>
 </html>

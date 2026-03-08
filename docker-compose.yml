@@ -32,7 +32,7 @@ services:
     networks:
       - iot-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iot_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iot_user} -d ${POSTGRES_DB:-iot_plant}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -77,7 +77,6 @@ services:
       - NODE_ENV=production
       - MQTT_BROKER=mqtt://mosquitto:1883
       - JWT_SECRET=${JWT_SECRET:-change-me-jwt-secret}
-      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN:-change-me-admin-token}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DATABASE=${POSTGRES_DB:-iot_plant}
@@ -125,7 +124,8 @@ services:
       - INFLUX_TOKEN=${INFLUX_TOKEN:-mytoken123456}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./MQTT-BDD/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./MQTT-BDD/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./MQTT-BDD/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
     networks:
       - iot-network
 

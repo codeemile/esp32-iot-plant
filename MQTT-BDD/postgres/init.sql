@@ -1,4 +1,4 @@
--- Liste des comptes utilisateurs
+-- Compte utilisateur unique (mode mono-user)
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
@@ -10,34 +10,39 @@ CREATE TABLE IF NOT EXISTS users (
   is_active BOOLEAN DEFAULT true
 );
 
--- Liste des appareils ESP32 liés aux utilisateurs
-CREATE TABLE IF NOT EXISTS devices (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-  device_name VARCHAR(100) NOT NULL,
-  mac_address VARCHAR(17) UNIQUE NOT NULL,
-  mqtt_topic VARCHAR(100) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  last_seen TIMESTAMP,
-  is_active BOOLEAN DEFAULT true
-);
+-- Verrouille la table users en mode mono-compte: 1 ligne maximum.
+CREATE UNIQUE INDEX IF NOT EXISTS users_singleton_one_row_idx ON users ((1));
 
--- Réglages personnels de l'utilisateur (seuils, alertes)
-CREATE TABLE IF NOT EXISTS user_preferences (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-  alert_email BOOLEAN DEFAULT true,
-  alert_threshold_soil INTEGER DEFAULT 30,
-  alert_threshold_lux_min INTEGER DEFAULT 500,
-  alert_threshold_lux_max INTEGER DEFAULT 10000,
+-- Réglages mono-user: seuils par métrique
+CREATE TABLE IF NOT EXISTS settings_thresholds (
+  metric VARCHAR(16) PRIMARY KEY,
+  min_value DOUBLE PRECISION NOT NULL,
+  max_value DOUBLE PRECISION NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Index pour accélérer les recherches
-CREATE INDEX idx_devices_user_id ON devices(user_id);
-CREATE INDEX idx_devices_mac_address ON devices(mac_address);
-CREATE INDEX idx_users_email ON users(email);
+-- Réglages mono-user: automations par équipement
+CREATE TABLE IF NOT EXISTS settings_automations (
+  device VARCHAR(16) PRIMARY KEY,
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  duration_sec INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Réglages mono-user: notifications par métrique
+CREATE TABLE IF NOT EXISTS settings_notifications (
+  metric VARCHAR(16) PRIMARY KEY,
+  push_enabled BOOLEAN NOT NULL DEFAULT true,
+  email_enabled BOOLEAN NOT NULL DEFAULT false,
+  start_delay_sec INTEGER NOT NULL,
+  repeat_interval_sec INTEGER NOT NULL,
+  mail_delay_min INTEGER NOT NULL,
+  recovery_reset_sec INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Met automatiquement la date de modification à chaque changement
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -52,7 +57,15 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Active la mise à jour automatique de la date sur user_preferences
-CREATE TRIGGER update_user_preferences_updated_at BEFORE UPDATE ON user_preferences
+-- Active la mise à jour automatique de la date sur settings_thresholds
+CREATE TRIGGER update_settings_thresholds_updated_at BEFORE UPDATE ON settings_thresholds
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Active la mise à jour automatique de la date sur settings_automations
+CREATE TRIGGER update_settings_automations_updated_at BEFORE UPDATE ON settings_automations
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Active la mise à jour automatique de la date sur settings_notifications
+CREATE TRIGGER update_settings_notifications_updated_at BEFORE UPDATE ON settings_notifications
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

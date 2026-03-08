@@ -1,3 +1,5 @@
+# Definition de l'image du serveur Node.js
+
 # Étape 1: Build
 FROM node:18-alpine AS builder
 

@@ -1,10 +1,16 @@
-const CACHE_NAME = 'plant-pwa-v4';
+//Le service worker gère le cache pour une expérience hors ligne fluide et des mises à jour efficaces.
+//Il pré-cache les ressources essentielles, nettoie les anciens caches lors de l'activation, 
+//et utilise des stratégies de cache adaptées pour les différentes requêtes (manifest, navigation, assets). 
+//Un canal de message permet à la page de forcer l'activation d'un worker en attente pour une mise à jour rapide.
+
+
+const CACHE_NAME = 'plant-pwa-v5';
 // Fichiers cœur de l'application (app shell) pré-cachés.
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.css',
-  '/app.js',
+  '/script.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
@@ -49,9 +55,26 @@ self.addEventListener('fetch', (event) => {
   const isManifestOrIcon =
     url.pathname === '/manifest.webmanifest' ||
     url.pathname.startsWith('/icons/');
+  const isAppShellAsset =
+    url.pathname === '/script.js' ||
+    url.pathname === '/style.css';
 
   if (isManifestOrIcon) {
     // Manifest/icônes: réseau d'abord pour capter les mises à jour visuelles.
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  if (isAppShellAsset) {
+    // JS/CSS du shell: réseau d'abord pour éviter les incohérences de version.
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -89,6 +112,24 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => caches.match('/index.html'));
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  // Ramene l'utilisateur vers l'application lors d'un clic notification.
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if ('focus' in client) return client.focus();
+      }
+      if (clients.openWindow) {
+        const targetUrl = event.notification?.data?.url || '/';
+        return clients.openWindow(targetUrl);
+      }
+      return undefined;
     })
   );
 });

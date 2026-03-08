@@ -6,13 +6,13 @@ Ce dossier contient les services d’infrastructure utilisés par le projet : MQ
 
 - `mosquitto/` : configuration du broker MQTT (`1883`) + WebSocket MQTT (`9001`)
 - `postgres/` : script d’initialisation SQL (`init.sql`)
-- `grafana/` : provisioning automatique (datasource + dashboards)
+- `grafana/` : configurations Grafana (datasource + dashboards)
 - `nginx.conf` : reverse proxy HTTP vers le service web
 
 ## Services concernés (docker-compose)
 
 - `mosquitto` → broker MQTT
-- `postgres` → base relationnelle (comptes, devices, préférences)
+- `postgres` → base relationnelle (compte utilisateur unique, préférences)
 - `influxdb` → base time-series (télémétrie)
 - `grafana` → visualisation InfluxDB
 - `reverse-proxy` → entrée HTTP sur le port `80`

@@ -1,13 +1,13 @@
 # WEB-APP
 
-Ce dossier contient l’application web Node.js (API REST, WebSocket et bridge MQTT) ainsi que le front-end statique.
+Ce dossier contient l'application web Node.js (API REST, WebSocket et bridge MQTT) ainsi que le front-end statique.
 
 ## Contenu
 
 - `server.js` : serveur Express + Socket.IO + MQTT + accès PostgreSQL/InfluxDB
 - `package.json` : scripts et dépendances Node.js
 - `Dockerfile` : image de production (Node 18, utilisateur non-root)
-- `public/` : interface web (`index.html`, `style.css`, `app.js`, PWA)
+- `public/` : interface web (`index.html`, `style.css`, `front.js`, `script.js`, PWA)
 
 ## Prérequis
 
@@ -21,7 +21,6 @@ Principales variables consommées par `server.js` :
 - `PORT` (défaut: `3000`)
 - `MQTT_BROKER`
 - `JWT_SECRET`
-- `ADMIN_SECRET_TOKEN`
 - `POSTGRES_HOST`
 - `POSTGRES_PORT`
 - `POSTGRES_DATABASE`
@@ -31,7 +30,6 @@ Principales variables consommées par `server.js` :
 - `INFLUX_TOKEN`
 - `INFLUX_ORG`
 - `INFLUX_BUCKET`
-- `SETTINGS_FILE` (optionnel, défaut `./settings.json`)
 
 ## Démarrage local (hors Docker)
 
@@ -64,8 +62,11 @@ L’application écoute sur `http://localhost:3000`.
 - `GET /api/history?limit=100` : historique des mesures
 - `GET /api/stats` : stats agrégées
 - `GET/POST /api/settings` : configuration des seuils (JWT requis)
-- `GET /api/users` : liste des utilisateurs
-- `GET/POST/DELETE /api/admin/users` : gestion admin (header `x-admin-token`)
+- `GET /api/settings/defaults` : valeurs par défaut serveur
+- `GET/PUT/DELETE /api/profile` : gestion du compte utilisateur unique (JWT requis)
+- `GET /api/auth/bootstrap-status` : mode bootstrap/login
+- `POST /api/auth/bootstrap-register` : création du compte initial unique
+- `POST /api/login` / `POST /api/logout` : authentification JWT
 
 ## Notes
 
