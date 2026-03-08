@@ -182,7 +182,10 @@
 
   <!-- Bloc configuration des seuils et automatisations -->
   <section id="settings-section">
-    <h2>⚙️ Paramètres</h2>
+    <div class="overlay-panel-header">
+      <h2>⚙️ Paramètres</h2>
+      <button type="button" class="overlay-close-btn" aria-label="Fermer les paramètres" title="Fermer" onclick="closeOverlayPanel('settings-section')">✕</button>
+    </div>
     <div class="settings-content">
       <div class="settings-tabs" role="tablist" aria-label="Catégories paramètres">
         <button class="settings-tab-btn active" id="tab-btn-thresholds" onclick="setActiveSettingsTab('thresholds')" role="tab" aria-selected="true">Seuils</button>
@@ -452,7 +455,10 @@
   </section>
 
   <section id="profile-section">
-    <h2>👤 Profil</h2>
+    <div class="overlay-panel-header">
+      <h2>👤 Profil</h2>
+      <button type="button" class="overlay-close-btn" aria-label="Fermer le profil" title="Fermer" onclick="closeOverlayPanel('profile-section')">✕</button>
+    </div>
     <div class="settings-content">
       <div class="threshold-cards-grid">
         <article class="threshold-card">

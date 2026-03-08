@@ -496,6 +496,24 @@ function toggleProfileSection() {
   if (willOpen) {
     loadProfile();
   }
+
+  syncOverlayPanelsState();
+}
+
+function syncOverlayPanelsState() {
+  const profileSection = document.getElementById('profile-section');
+  const settingsSection = document.getElementById('settings-section');
+  const overlayOpen = Boolean(
+    profileSection?.classList.contains('visible') || settingsSection?.classList.contains('visible')
+  );
+  document.body.classList.toggle('panel-overlay-open', overlayOpen);
+}
+
+function closeOverlayPanel(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  panel.classList.remove('visible');
+  syncOverlayPanelsState();
 }
 
 // Termine la session locale (token + UI) et remet l'état invité.
@@ -517,10 +535,13 @@ function logout() {
   if (loginFields) loginFields.classList.add(LOGIN_COLLAPSED_CLASS);
   if (loginToggle) {
     loginToggle.style.display = 'inline-flex';
-    loginToggle.textContent = authMode === 'bootstrap' ? 'Créer le compte admin' : 'Connexion';
+    loginToggle.textContent = authMode === 'bootstrap' ? 'Création de compte' : 'Connexion';
   }
   document.getElementById('login-error').textContent = '';
   if (profileSection) profileSection.classList.remove('visible');
+  const settingsSection = document.getElementById('settings-section');
+  if (settingsSection) settingsSection.classList.remove('visible');
+  syncOverlayPanelsState();
   detectAuthMode();
   
   disableButtons();
@@ -569,7 +590,7 @@ function handleLoginToggle() {
   if (loginFields && loginFields.classList.contains(LOGIN_COLLAPSED_CLASS)) {
     loginFields.classList.remove(LOGIN_COLLAPSED_CLASS);
     if (loginToggle) {
-      loginToggle.textContent = authMode === 'bootstrap' ? 'Créer le compte admin' : 'Se connecter';
+      loginToggle.textContent = authMode === 'bootstrap' ? 'Création de compte' : 'Se connecter';
     }
     updateAuthModeUi();
     if (usernameInput) usernameInput.focus();
@@ -1186,6 +1207,8 @@ function toggleSettingsSection() {
       setActiveSettingsTab('thresholds');
       loadSettings();
     }
+
+    syncOverlayPanelsState();
   }
 }
 

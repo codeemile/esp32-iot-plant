@@ -129,16 +129,6 @@ function validateEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function validatePasswordStrength(password) {
-  if (typeof password !== 'string') return false;
-  if (password.length < 10 || password.length > 128) return false;
-  const hasUpper = /[A-Z]/.test(password);
-  const hasLower = /[a-z]/.test(password);
-  const hasDigit = /\d/.test(password);
-  const hasSymbol = /[^A-Za-z0-9]/.test(password);
-  return hasUpper && hasLower && hasDigit && hasSymbol;
-}
-
 // Retourne true si un compte existe deja (mode mono-user).
 async function hasExistingUsers() {
   const result = await pgPool.query('SELECT 1 FROM users LIMIT 1');
@@ -899,10 +889,6 @@ app.post('/api/auth/bootstrap-register', async (req, res) => {
       return res.status(400).json({ error: 'Les mots de passe ne correspondent pas' });
     }
 
-    if (!validatePasswordStrength(password)) {
-      return res.status(400).json({ error: 'Mot de passe trop faible (10+ chars, maj/min/chiffre/symbole)' });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 12);
     const insert = await pgPool.query(
       'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
@@ -1006,10 +992,6 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ error: 'Email invalide' });
     }
 
-    if (!validatePasswordStrength(password)) {
-      return res.status(400).json({ error: 'Mot de passe trop faible (10+ chars, maj/min/chiffre/symbole)' });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const result = await pgPool.query(
@@ -1098,9 +1080,6 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       }
       if (newPassword !== newPasswordConfirm) {
         return res.status(400).json({ error: 'Les nouveaux mots de passe ne correspondent pas' });
-      }
-      if (!validatePasswordStrength(newPassword)) {
-        return res.status(400).json({ error: 'Nouveau mot de passe trop faible (10+ chars, maj/min/chiffre/symbole)' });
       }
     }
 

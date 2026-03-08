@@ -31,7 +31,7 @@ function updateAuthModeUi() {
   const isBootstrap = authMode === 'bootstrap';
 
   if (loginToggle) {
-    loginToggle.textContent = isBootstrap ? 'Creer le compte admin' : 'Connexion';
+    loginToggle.textContent = isBootstrap ? 'Creation de compte' : 'Connexion';
   }
   if (emailInput) {
     emailInput.style.display = isBootstrap ? 'block' : 'none';
@@ -43,7 +43,7 @@ function updateAuthModeUi() {
   }
   if (hint) {
     hint.textContent = isBootstrap
-      ? 'Premiere initialisation: creez le compte administrateur.'
+      ? 'Premiere initialisation: creez votre compte.'
       : 'Connectez-vous avec votre compte existant.';
   }
 }

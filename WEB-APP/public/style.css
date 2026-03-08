@@ -69,6 +69,8 @@ main {
   flex: 0 0 45%;
   min-height: 0;
   overflow: auto;
+  position: relative;
+  z-index: 3;
 }
 
 #layout-resizer {
@@ -81,6 +83,8 @@ main {
   touch-action: none;
   opacity: 0.5;
   transition: opacity 0.2s ease, background-color 0.2s ease;
+  position: relative;
+  z-index: 1;
 }
 
 #layout-resizer:hover {
@@ -338,6 +342,8 @@ h2 {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
+  z-index: 0;
 }
 
 #chart-wrapper {
@@ -356,7 +362,7 @@ canvas {
   display: flex;
   flex-direction: row;
   gap: 0.75rem;
-  align-items: center;
+  align-items: flex-start;
   padding: 0;
   background: transparent;
   border: none;
@@ -539,6 +545,17 @@ button,
 
 #settings-section.visible {
   display: block;
+  position: fixed;
+  top: clamp(5rem, 16vh, 8rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1100px, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 6rem);
+  overflow: auto;
+  z-index: 1001;
+  isolation: isolate;
+  opacity: 1;
+  box-shadow: 0 0 0 100vmax rgba(2, 6, 23, 0.62), 0 18px 40px rgba(0,0,0,0.55);
 }
 
 #profile-section {
@@ -552,6 +569,55 @@ button,
 
 #profile-section.visible {
   display: block;
+  position: fixed;
+  top: clamp(5rem, 16vh, 8rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1100px, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 6rem);
+  overflow: auto;
+  z-index: 1001;
+  isolation: isolate;
+  opacity: 1;
+  box-shadow: 0 0 0 100vmax rgba(2, 6, 23, 0.62), 0 18px 40px rgba(0,0,0,0.55);
+}
+
+.overlay-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.overlay-panel-header h2 {
+  margin-bottom: 0;
+  text-align: left;
+}
+
+.overlay-close-btn {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(148,163,184,0.45);
+  border-radius: 999px;
+  background: rgba(15,23,42,0.85);
+  color: #e2e8f0;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.overlay-close-btn:hover {
+  background: rgba(239,68,68,0.2);
+  border-color: rgba(239,68,68,0.85);
+  color: #fecaca;
+}
+
+.overlay-close-btn:focus-visible {
+  outline: 2px solid #10b981;
+  outline-offset: 2px;
 }
 
 .profile-timestamps {
@@ -1168,6 +1234,13 @@ button,
     width: 100%;
     flex-direction: column;
     align-items: stretch;
+  }
+
+  #settings-section.visible,
+  #profile-section.visible {
+    top: clamp(6.2rem, 18vh, 9.2rem);
+    width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 7rem);
   }
 }
 
