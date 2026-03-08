@@ -1,5 +1,14 @@
-// === Serveur principal ===
-// Ce serveur relie l'ESP32, l'interface web et les bases de données.
+// ============================================================================
+// Main Backend Server
+// ----------------------------------------------------------------------------
+// Responsabilites:
+// - bridge MQTT <-> WebSocket
+// - APIs REST auth/profile/settings/history
+// - persistence PostgreSQL (compte unique + settings)
+// - persistence InfluxDB (telemetrie time-series)
+// ============================================================================
+
+// --- Imports -----------------------------------------------------------------
 const mqtt = require('mqtt');
 const express = require('express');
 const http = require('http');
@@ -11,11 +20,13 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const { InfluxDB, Point } = require('@influxdata/influxdb-client');
 
-// Paramètres de base (peuvent être changés via les variables d'environnement)
+// --- Environment & Core Config ----------------------------------------------
+// Parametres de base (surchargables par variables d'environnement).
 const MQTT_BROKER = process.env.MQTT_BROKER || 'mqtt://localhost:1883';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// PostgreSQL stocke les utilisateurs
+// --- PostgreSQL Pool ---------------------------------------------------------
+// PostgreSQL stocke un compte utilisateur unique
 // Si DATABASE_URL existe on l'utilise, sinon on lit les champs séparés
 const pgPool = new Pool(
   process.env.DATABASE_URL ? 
@@ -45,6 +56,7 @@ pgPool.on('error', (err, client) => {
   // Le pool recrée les connexions automatiquement
 });
 
+// --- InfluxDB Client ---------------------------------------------------------
 // InfluxDB stocke les mesures capteurs (optionnel)
 const influxURL = process.env.INFLUX_URL || 'http://localhost:8086';
 const influxToken = process.env.INFLUX_TOKEN || 'mytoken123456';
@@ -83,7 +95,8 @@ const io = new Server(server, {
 app.use(express.static('public'));
 app.use(express.json());
 
-// Vérifie le token de connexion envoyé par le navigateur
+// --- Auth Helpers -------------------------------------------------------------
+// Vérifie le token Bearer JWT envoyé par le client HTTP.
 function authenticateToken(req, res, next) {
   const token = req.headers['authorization']?.split(' ')[1];
   
@@ -126,6 +139,7 @@ function validatePasswordStrength(password) {
   return hasUpper && hasLower && hasDigit && hasSymbol;
 }
 
+// Retourne true si un compte existe deja (mode mono-user).
 async function hasExistingUsers() {
   const result = await pgPool.query('SELECT 1 FROM users LIMIT 1');
   return result.rowCount > 0;
@@ -171,7 +185,8 @@ async function sendAlertEmail(subject, message) {
 }
 */
 
-// Vérifie les connexions aux bases au démarrage
+// --- Startup DB Checks -------------------------------------------------------
+// Vérifie les connexions de base au démarrage.
 async function initDatabases() {
   try {
     // Test simple PostgreSQL
@@ -192,7 +207,8 @@ async function initDatabases() {
   }
 }
 
-// Enregistre une mesure dans InfluxDB
+// --- Telemetry Persistence ---------------------------------------------------
+// Enregistre une mesure dans InfluxDB.
 function saveTelemetryToInflux(data) {
   if (!writeApi) return; // InfluxDB non actif
   
@@ -219,6 +235,7 @@ function saveTelemetryToInflux(data) {
   }
 }
 
+// --- MQTT Runtime ------------------------------------------------------------
 // Connexion MQTT (messages ESP32)
 const client = mqtt.connect(MQTT_BROKER, {
   reconnectPeriod: 5000,
@@ -263,6 +280,7 @@ const defaultSettings = {
 
 let currentSettings = { ...defaultSettings };
 
+// --- Settings Normalization Layer -------------------------------------------
 // Fusionne des paramètres entrants avec les valeurs par défaut,
 // en conservant des types sûrs (nombres/booleans) pour éviter
 // d'écrire des paramètres invalides dans le runtime.
@@ -348,6 +366,7 @@ function mergeSettings(defaults, incoming = {}) {
   return merged;
 }
 
+// --- PostgreSQL Schema & CRUD (settings tables) -----------------------------
 async function ensureRelationalSettingsSchema() {
   try {
     await pgPool.query(`
@@ -441,6 +460,7 @@ async function ensureRelationalSettingsSchema() {
   }
 }
 
+// Lit les settings effectifs en combinant defaults + base relationnelle.
 async function getSettingsForUser(_userId) {
   const [thresholdResult, automationResult, notificationResult] = await Promise.all([
     pgPool.query('SELECT metric, min_value, max_value FROM settings_thresholds'),
@@ -503,6 +523,7 @@ async function getSettingsForUser(_userId) {
   return mergeSettings(defaultSettings, incoming);
 }
 
+// Ecrit les settings normalises dans les tables relationnelles.
 async function upsertSettingsForUser(_userId, incomingSettings) {
   const merged = mergeSettings(defaultSettings, incomingSettings || {});
 
@@ -558,6 +579,7 @@ async function upsertSettingsForUser(_userId, incomingSettings) {
   }
 }
 
+// --- MQTT Event Handlers -----------------------------------------------------
 client.on('connect', () => {
   // Bloc de gestion de connexion MQTT : statut global + abonnement topic.
   console.log('[MQTT] Connecté au broker');
@@ -633,6 +655,7 @@ client.on('message', async (topic, message) => {
   }
 });
 
+// --- WebSocket Gateway -------------------------------------------------------
 // Canal temps réel navigateur <-> serveur
 io.on('connection', (socket) => {
   // Session WebSocket d'un client navigateur : auth, commandes et lifecycle.
@@ -701,7 +724,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// API HTTP
+// --- HTTP API ----------------------------------------------------------------
+// Endpoints REST exposes au front.
 
 app.get('/api/settings', authenticateToken, async (req, res) => {
   // Retourne la configuration active à un utilisateur authentifié.
@@ -711,6 +735,16 @@ app.get('/api/settings', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('[SETTINGS] Lecture tables settings_* échouée:', error.message);
     res.status(503).json({ error: 'Base de données indisponible pour charger les paramètres' });
+  }
+});
+
+app.get('/api/settings/defaults', (req, res) => {
+  // Front server-first: expose une copie des valeurs par defaut backend.
+  try {
+    return res.json(JSON.parse(JSON.stringify(defaultSettings)));
+  } catch (error) {
+    console.error('[SETTINGS] Erreur export defaults:', error.message);
+    return res.status(500).json({ error: 'Impossible de charger les defaults serveur' });
   }
 });
 
@@ -832,6 +866,7 @@ app.get('/api/auth/bootstrap-status', async (req, res) => {
   }
 });
 
+// Creation atomique du compte initial (verrou table users).
 app.post('/api/auth/bootstrap-register', async (req, res) => {
   try {
     await pgPool.query('BEGIN');
@@ -1157,110 +1192,6 @@ app.delete('/api/profile', authenticateToken, async (req, res) => {
   }
 });
 
-// Liste des utilisateurs
-app.get('/api/users', async (req, res) => {
-  // Liste les utilisateurs pour affichage/diagnostic côté front.
-  try {
-    const result = await pgPool.query('SELECT id, username, email, created_at, is_active FROM users ORDER BY created_at DESC');
-    res.json(result.rows);
-  } catch (error) {
-    console.error('[API] Erreur users:', error.message);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// ============= API ADMIN (protégée par token secret) =============
-
-// Vérifie le token administrateur
-function requireAdminToken(req, res, next) {
-  // Middleware d'administration : contrôle strict du header x-admin-token.
-  const adminToken = req.headers['x-admin-token'];
-  const expectedToken = process.env.ADMIN_SECRET_TOKEN;
-
-  if (!expectedToken) {
-    return res.status(500).json({ error: 'Token admin non configuré sur le serveur' });
-  }
-
-  if (!adminToken || adminToken !== expectedToken) {
-    return res.status(403).json({ error: 'Accès refusé - Token admin invalide' });
-  }
-
-  next();
-}
-
-// Admin : voir tous les utilisateurs
-app.get('/api/admin/users', requireAdminToken, async (req, res) => {
-  // Endpoint admin pour consulter tous les utilisateurs avec métadonnées.
-  try {
-    const result = await pgPool.query('SELECT id, username, email, created_at, last_login, is_active FROM users ORDER BY created_at DESC');
-    res.json(result.rows);
-  } catch (error) {
-    console.error('[ADMIN] Erreur liste users:', error.message);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Admin : créer un utilisateur
-app.post('/api/admin/users', requireAdminToken, async (req, res) => {
-  // Endpoint admin pour créer un utilisateur (hash bcrypt côté serveur).
-  try {
-    const exists = await hasExistingUsers();
-    if (exists) {
-      return res.status(403).json({ error: 'Mode mono-user: un compte existe déjà' });
-    }
-
-    const { username, password, email } = req.body;
-
-    if (!username || !password || !email) {
-      return res.status(400).json({ error: 'Tous les champs sont requis' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Le mot de passe doit avoir au moins 6 caractères' });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const result = await pgPool.query(
-      'INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email',
-      [username, email, hashedPassword]
-    );
-
-    res.status(201).json({ message: 'Utilisateur créé', user: result.rows[0] });
-  } catch (error) {
-    if (error.code === '23505') {
-      return res.status(400).json({ error: 'Username ou email déjà utilisé' });
-    }
-    console.error('[ADMIN] Erreur création user:', error.message);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Admin : supprimer un utilisateur
-app.delete('/api/admin/users/:id', requireAdminToken, async (req, res) => {
-  // Endpoint admin pour supprimer un utilisateur via son identifiant.
-  try {
-    const { id } = req.params;
-    const result = await pgPool.query('DELETE FROM users WHERE id = $1 RETURNING username', [id]);
-    
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: 'Utilisateur non trouvé' });
-    }
-
-    res.json({ message: 'Utilisateur supprimé', username: result.rows[0].username });
-  } catch (error) {
-    console.error('[ADMIN] Erreur suppression user:', error.message);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// ============= FIN API ADMIN =============
-
-// Suppression utilisateur (bloquée en production)
-app.delete('/api/users/:id', async (req, res) => {
-  return res.status(403).json({ error: 'Endpoint désactivé. Utiliser /api/profile avec mot de passe.' });
-});
-
 app.get('/health', (req, res) => {
   // Sonde de santé pour Docker/monitoring (process + dépendances).
   res.json({
@@ -1272,6 +1203,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+// --- Process Lifecycle -------------------------------------------------------
 // Lancement du serveur
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0'; // Rend le service accessible depuis le réseau
@@ -1288,7 +1220,6 @@ async function startServer() {
     console.log(`🌐 Web interface: http://0.0.0.0:${PORT}`);
     console.log(`📊 API History: http://0.0.0.0:${PORT}/api/history`);
     console.log(`📊 API Stats: http://0.0.0.0:${PORT}/api/stats`);
-    console.log(`👥 API Users: http://0.0.0.0:${PORT}/api/users`);
     console.log(`💚 Health: http://0.0.0.0:${PORT}/health`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   });

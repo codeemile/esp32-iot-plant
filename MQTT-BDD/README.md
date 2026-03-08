@@ -12,7 +12,7 @@ Ce dossier contient les services d’infrastructure utilisés par le projet : MQ
 ## Services concernés (docker-compose)
 
 - `mosquitto` → broker MQTT
-- `postgres` → base relationnelle (comptes, préférences)
+- `postgres` → base relationnelle (compte utilisateur unique, préférences)
 - `influxdb` → base time-series (télémétrie)
 - `grafana` → visualisation InfluxDB
 - `reverse-proxy` → entrée HTTP sur le port `80`

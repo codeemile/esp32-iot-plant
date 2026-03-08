@@ -20,11 +20,11 @@ Système complet de surveillance et contrôle de plante connectée avec ESP32, M
 
 ### Backend
 - MQTT broker (Mosquitto)
-- PostgreSQL pour gestion des comptes
+- PostgreSQL pour gestion d'un compte utilisateur unique
 - InfluxDB pour données time-series
 - API REST + WebSocket temps réel (authentification JWT 7 jours)
-- API Admin sécurisée par jeton secret (x-admin-token)
-- Seuils capteurs persistés en JSON (fichier settings)
+- Profil utilisateur sécurisé (édition/suppression avec mot de passe actuel)
+- Paramètres persistés en PostgreSQL (tables relationnelles)
 
 ## Architecture
 
@@ -43,7 +43,8 @@ esp32-iot-plant/
   └── public/
     ├── index.html      # Structure HTML (sans styles inline)
     ├── style.css       # Styles globaux et panneau Parametres
-    └── script.js       # Auth JWT, WebSocket, graphiques, seuils
+    ├── front.js        # Manipulation visuelle (DOM/UI)
+    └── script.js       # Logique API/WebSocket et metier
 ```
 
 ## Installation
@@ -85,16 +86,13 @@ GRAFANA_PASSWORD=<mot-de-passe-fort>
 
 # Sécurité API web
 JWT_SECRET=<secret-long-et-aleatoire>
-ADMIN_SECRET_TOKEN=<token-admin-long-et-aleatoire>
 ```
 
 > Important : les identifiants d'initialisation InfluxDB/Grafana/PostgreSQL sont appliqués à la création initiale des volumes. Si les volumes existent déjà, changer `.env` ne remplace pas toujours automatiquement les comptes déjà créés.
 
-### Déploiement serveur physique avec auto-update
+### Déploiement serveur physique
 
-Pour un hébergement sur serveur Linux avec mise à jour automatique depuis GitHub + rebuild Docker, voir :
-
-- [deploy/README.md](deploy/README.md)
+Le projet peut etre deploye via Docker Compose sur un serveur Linux (systemd, cron ou CI/CD selon votre infra).
 
 ### 2. Lancer la stack Docker (recommandé)
 
@@ -115,11 +113,11 @@ Services démarrés :
 #### Web app (`web`)
 - URL : `http://localhost:3000`
 - Rôle : API REST, WebSocket, bridge MQTT, auth JWT.
-- Variables utilisées : `POSTGRES_*`, `INFLUX_*`, `JWT_SECRET`, `ADMIN_SECRET_TOKEN`.
+- Variables utilisées : `POSTGRES_*`, `INFLUX_*`, `JWT_SECRET`.
 - Santé : `GET /health`
 
 #### PostgreSQL (`postgres-db`)
-- Rôle : comptes utilisateurs, préférences, devices.
+- Role : compte utilisateur unique + preferences + etats devices.
 - Variables utilisées : `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
 - Accès SQL (backdoor) :
 
@@ -127,12 +125,13 @@ Services démarrés :
 docker compose exec postgres sh -lc 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-- Créer un compte applicatif directement en SQL (hash bcrypt via `pgcrypto`) :
+- Reinitialiser le compte unique en SQL (hash bcrypt via `pgcrypto`) :
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DELETE FROM users;
 INSERT INTO users (username, email, password_hash)
-VALUES ('admin2', 'admin2@mail.local', crypt('MonMotDePasseFort', gen_salt('bf', 10)));
+VALUES ('admin', 'admin@mail.local', crypt('MonMotDePasseFort', gen_salt('bf', 10)));
 ```
 
 #### InfluxDB (`influxdb`)
@@ -262,8 +261,10 @@ Accéder à : **http://localhost:3000**
 - Historique InfluxDB : `GET /api/history?limit=100`
 - Statistiques 24h : `GET /api/stats`
 - Paramètres capteurs : `GET/POST /api/settings` (JWT obligatoire)
-- Liste utilisateurs : `GET /api/users`
-- Admin utilisateurs : `GET/POST/DELETE /api/admin/users` (header `x-admin-token`)
+- Defaults paramètres : `GET /api/settings/defaults`
+- Profil utilisateur : `GET/PUT/DELETE /api/profile` (JWT obligatoire)
+- Auth bootstrap : `GET /api/auth/bootstrap-status`, `POST /api/auth/bootstrap-register`
+- Auth session : `POST /api/login`, `POST /api/logout`
 - Santé serveur : `GET /health`
 
 ### Grafana
@@ -288,7 +289,7 @@ Seuils par défaut (éditables dans le panneau Parametres ou via `/api/settings`
 
 ### Structure des bases de données
 
-#### PostgreSQL (Comptes utilisateurs)
+#### PostgreSQL (Compte utilisateur unique)
 ```sql
 CREATE TABLE users (
   id SERIAL PRIMARY KEY,
@@ -302,7 +303,7 @@ CREATE TABLE users (
 #### InfluxDB (Données time-series)
 ```
 Measurement: plant_telemetry
-Fields: luminosite, humidite_sol, co2, rssi
+Fields: luminosite, humidite_sol, humidite_air, temperature, pressure, rssi, water_full, led_on, fan_on, humidifier_on
 Timestamp: automatique
 ```
 
@@ -318,7 +319,10 @@ Timestamp: automatique
 {
   "luminosite": 1234.5,
   "humidite_sol": 45.2,
-  "co2": 650,
+  "humidite_air": 55.1,
+  "temperature": 23.4,
+  "pressure": 1012.3,
+  "water_full": true,
   "rssi": -65
 }
 ```
@@ -354,7 +358,6 @@ Timestamp: automatique
 
 ### Production
 - JWT signé avec `JWT_SECRET` robuste
-- Token admin séparé (`x-admin-token`)
 - Variables d'environnement pour credentials
 - Healthchecks pour MQTT / PostgreSQL / InfluxDB
 - Activer l'authentification MQTT (mosquitto.conf)
@@ -364,7 +367,7 @@ Timestamp: automatique
 ## Optimisations
 
 ### Backend
-- PostgreSQL pour comptes utilisateurs
+- PostgreSQL pour compte utilisateur unique
 - InfluxDB pour stockage time-series optimisé
 - Pas de cache mémoire (tout en base)
 - Gestion d'erreurs robuste

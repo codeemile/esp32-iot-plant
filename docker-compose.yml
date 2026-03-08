@@ -77,7 +77,6 @@ services:
       - NODE_ENV=production
       - MQTT_BROKER=mqtt://mosquitto:1883
       - JWT_SECRET=${JWT_SECRET:-change-me-jwt-secret}
-      - ADMIN_SECRET_TOKEN=${ADMIN_SECRET_TOKEN:-change-me-admin-token}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DATABASE=${POSTGRES_DB:-iot_plant}

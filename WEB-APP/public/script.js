@@ -1,7 +1,17 @@
-// === Interface web ===
-// Ce fichier gère la connexion utilisateur, les données en direct et le graphique.
-// Connexion WebSocket et variables globales
-const socket = io({ reconnection: true, reconnectionDelay: 1000 });
+// ============================================================================
+// Front Logic Layer
+// ----------------------------------------------------------------------------
+// Ce fichier contient la logique metier front:
+// - auth (bootstrap/login/logout)
+// - orchestration API et WebSocket
+// - gestion settings/automations/notifications
+// - rendu et interactions du graphique
+// Les manipulations purement visuelles vivent dans front.js.
+// ============================================================================
+
+// --- Core Runtime State ------------------------------------------------------
+// Socket principal avec reconnexion auto; autoConnect false pour attendre init.
+const socket = io({ reconnection: true, reconnectionDelay: 1000, autoConnect: false });
 const RSSI_FIXED_RANGE = { min: -90, max: -30 };
 const RSSI_ALERT_THRESHOLD = -85;
 const NOTIFICATION_METRICS = ['lux', 'soil', 'air', 'temp', 'rssi', 'water'];
@@ -23,42 +33,8 @@ let isAuthenticated = false;
 let authMode = 'login';
 let chartData = null;
 let latestTelemetry = null;
-const defaultSettings = {
-  thresholds: {
-    lux: { min: 500, max: 10000 },
-    soil: { min: 30, max: 70 },
-    air: { min: 30, max: 70 },
-    temp: { min: 15, max: 30 }
-  },
-  indicators: {
-    lux: true,
-    soil: true,
-    air: true,
-    temp: true,
-    pressure: true
-  },
-  automations: {
-    led: false,
-    hum: false,
-    fan: false
-  },
-  automationDurations: {
-    led: 1800,
-    hum: 20,
-    fan: 180
-  },
-  alerts: {
-    rules: {
-      lux: { ...NOTIFICATION_RULE_DEFAULTS },
-      soil: { ...NOTIFICATION_RULE_DEFAULTS },
-      air: { ...NOTIFICATION_RULE_DEFAULTS },
-      temp: { ...NOTIFICATION_RULE_DEFAULTS },
-      rssi: { ...NOTIFICATION_RULE_DEFAULTS },
-      water: { ...NOTIFICATION_RULE_DEFAULTS }
-    }
-  }
-};
-let settingsCache = JSON.parse(JSON.stringify(defaultSettings));
+let defaultSettings = null;
+let settingsCache = null;
 const automationTimerState = {
   led: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 },
   hum: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 },
@@ -79,6 +55,32 @@ let swRegistrationRef = null;
 let pushPermissionAsked = false;
 const alertRuntimeState = new Map();
 
+// --- Generic Helpers ---------------------------------------------------------
+// Clone profond JSON pour isoler defaults/settings mutables.
+function cloneSettings(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function ensureSettingsReady() {
+  return Boolean(defaultSettings && settingsCache);
+}
+
+// Charge la source de verite des defaults depuis le backend.
+async function loadServerSettingsDefaults() {
+  const response = await fetch('/api/settings/defaults');
+  if (!response.ok) {
+    throw new Error('Impossible de charger les parametres par defaut serveur');
+  }
+
+  const payload = await response.json();
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Payload defaults invalide');
+  }
+
+  defaultSettings = cloneSettings(payload);
+  settingsCache = cloneSettings(payload);
+}
+
 const ALERT_POLICY_BOUNDS = {
   startDelaySec: { min: 0, max: 3600 },
   repeatIntervalSec: { min: 30, max: 21600 },
@@ -86,6 +88,7 @@ const ALERT_POLICY_BOUNDS = {
   recoveryResetSec: { min: 10, max: 3600 }
 };
 
+// --- PWA & Browser Capabilities ---------------------------------------------
 // Attache des interactions utilisateur natives (clic/touche)
 // pour déclencher l'installation PWA au bon moment navigateur.
 function attachNativeInstallPrompt() {
@@ -124,7 +127,9 @@ async function ensurePushPermission() {
   }
 }
 
+// --- Alert Engine (Push/Email policy runtime) -------------------------------
 function getTelemetryPushAlerts(data) {
+  if (!ensureSettingsReady()) return [];
   const alerts = [];
   const thresholds = settingsCache.thresholds;
   const rules = settingsCache.alerts?.rules || {};
@@ -203,6 +208,7 @@ async function pushNotify(title, body, tag) {
 }
 
 function maybeSendPushAlerts(data) {
+  if (!ensureSettingsReady()) return;
   const hasEnabledChannel = NOTIFICATION_METRICS.some((metric) => {
     const rule = settingsCache.alerts?.rules?.[metric];
     return Boolean(rule?.push || rule?.email);
@@ -298,7 +304,9 @@ function sanitizeAlertSeconds(value, fallback, min, max) {
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
+// Construit l'objet rules en lisant les inputs de l'onglet Notifications.
 function getAlertSettingsFromUi() {
+  if (!ensureSettingsReady()) return { rules: {} };
   const rules = {};
 
   for (const metric of NOTIFICATION_METRICS) {
@@ -336,44 +344,7 @@ function getAlertSettingsFromUi() {
   return { rules };
 }
 
-// === Fonctions de connexion utilisateur ===
-// Affiche/masque le message d'erreur dans le panneau de connexion.
-function setLoginError(msg) {
-  const el = document.getElementById('login-error');
-  if (msg) {
-    el.textContent = msg;
-    el.style.display = 'block';
-  } else {
-    el.textContent = '';
-    el.style.display = 'none';
-  }
-}
-
-function updateAuthModeUi() {
-  const loginToggle = document.getElementById('login-toggle-btn');
-  const emailInput = document.getElementById('email');
-  const confirmInput = document.getElementById('password-confirm');
-  const hint = document.getElementById('auth-mode-hint');
-
-  const isBootstrap = authMode === 'bootstrap';
-
-  if (loginToggle) {
-    loginToggle.textContent = isBootstrap ? 'Créer le compte admin' : 'Connexion';
-  }
-  if (emailInput) {
-    emailInput.style.display = isBootstrap ? 'block' : 'none';
-    emailInput.required = isBootstrap;
-  }
-  if (confirmInput) {
-    confirmInput.style.display = isBootstrap ? 'block' : 'none';
-    confirmInput.required = isBootstrap;
-  }
-  if (hint) {
-    hint.textContent = isBootstrap
-      ? 'Première initialisation: créez le compte administrateur.'
-      : 'Connectez-vous avec votre compte existant.';
-  }
-}
+// --- Auth & Profile Flows ----------------------------------------------------
 
 async function detectAuthMode() {
   try {
@@ -393,73 +364,7 @@ async function detectAuthMode() {
   }
 }
 
-// Active les boutons de contrôle quand l'utilisateur est authentifié.
-function enableButtons() {
-  console.log('[DEBUG] enableButtons()');
-  const ledBtn = document.getElementById('led-btn');
-  const humBtn = document.getElementById('hum-btn');
-  const fanBtn = document.getElementById('fan-btn');
-  const ledAuto = document.getElementById('led-auto');
-  const humAuto = document.getElementById('hum-auto');
-  const fanAuto = document.getElementById('fan-auto');
-  if (ledBtn) ledBtn.classList.remove('disabled');
-  if (humBtn) humBtn.classList.remove('disabled');
-  if (fanBtn) fanBtn.classList.remove('disabled');
-  if (ledAuto) ledAuto.disabled = false;
-  if (humAuto) humAuto.disabled = false;
-  if (fanAuto) fanAuto.disabled = false;
-}
-
-// Désactive les contrôles sensibles quand l'utilisateur est anonyme.
-function disableButtons() {
-  console.log('[DEBUG] disableButtons()');
-  const ledBtn = document.getElementById('led-btn');
-  const humBtn = document.getElementById('hum-btn');
-  const fanBtn = document.getElementById('fan-btn');
-  const ledAuto = document.getElementById('led-auto');
-  const humAuto = document.getElementById('hum-auto');
-  const fanAuto = document.getElementById('fan-auto');
-  if (ledBtn) ledBtn.classList.add('disabled');
-  if (humBtn) humBtn.classList.add('disabled');
-  if (fanBtn) fanBtn.classList.add('disabled');
-  if (ledAuto) ledAuto.disabled = true;
-  if (humAuto) humAuto.disabled = true;
-  if (fanAuto) fanAuto.disabled = true;
-}
-
-// Bascule l'UI en mode "connecté" (chip utilisateur + bouton logout).
-function showAuthInfo() {
-  const loginInputs = document.querySelector('.login-inputs');
-  const authStatus = document.getElementById('auth-status');
-  const loginFields = document.getElementById('login-fields');
-  const loginToggle = document.getElementById('login-toggle-btn');
-  
-  if (loginInputs) loginInputs.style.display = 'none';
-  if (loginFields) loginFields.classList.add(LOGIN_COLLAPSED_CLASS);
-  if (loginToggle) loginToggle.style.display = 'none';
-  if (authStatus) {
-    authStatus.style.display = 'flex';
-    authStatus.innerHTML = `
-      <button type="button" class="user-chip" onclick="toggleProfileSection()" title="Ouvrir le profil">👤 ${currentUsername}</button>
-      <button class="logout-btn" onclick="logout()">Déconnexion</button>
-    `;
-  }
-}
-
-function setProfileMessage(msg, isError = false) {
-  const el = document.getElementById('profile-message');
-  if (!el) return;
-  el.textContent = msg || '';
-  el.style.color = isError ? '#ef4444' : '#94a3b8';
-}
-
-function formatTimestamp(value) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('fr-FR');
-}
-
+// Charge et affiche les infos profil (compte + timestamps).
 async function loadProfile() {
   if (!token) return;
   try {
@@ -485,6 +390,7 @@ async function loadProfile() {
   }
 }
 
+// Sauvegarde profil (username/email/password) avec verification currentPassword.
 async function saveProfile() {
   if (!isAuthenticated || !token) return;
 
@@ -536,6 +442,7 @@ async function saveProfile() {
   }
 }
 
+// Suppression irreversible du compte, protegee par mot de passe actuel.
 async function deleteAccount() {
   if (!isAuthenticated || !token) return;
 
@@ -572,6 +479,7 @@ async function deleteAccount() {
   }
 }
 
+// Ouvre/ferme le panneau profil et ferme le panneau settings si besoin.
 function toggleProfileSection() {
   if (!isAuthenticated) return;
   const profileSection = document.getElementById('profile-section');
@@ -618,19 +526,37 @@ function logout() {
   disableButtons();
 }
 
-// Vérifie si l'utilisateur était déjà connecté
-if (token) {
-  console.log('[DEBUG] Token trouvé:', token.substring(0, 20) + '...');
-  isAuthenticated = true;
-  showAuthInfo();
-  enableButtons();
-  loadSettings();
-} else {
-  console.log('[DEBUG] Pas de token');
+// Sequence de bootstrap front:
+// 1) charger defaults serveur
+// 2) connecter socket
+// 3) restaurer session JWT locale si presente
+async function initApp() {
   disableButtons();
+
+  try {
+    await loadServerSettingsDefaults();
+    applySettingsToUi();
+  } catch (error) {
+    console.error('[SETTINGS] Init defaults serveur échouée:', error.message);
+    setLoginError('Impossible de charger la configuration serveur');
+    return;
+  }
+
+  socket.connect();
+  detectAuthMode();
+
+  if (token) {
+    console.log('[DEBUG] Token trouvé:', token.substring(0, 20) + '...');
+    isAuthenticated = true;
+    showAuthInfo();
+    enableButtons();
+    loadSettings();
+  } else {
+    console.log('[DEBUG] Pas de token');
+  }
 }
 
-detectAuthMode();
+initApp();
 
 function handleLoginToggle() {
   // Gère le bouton unique "Connexion / Se connecter" selon l'état courant.
@@ -658,6 +584,7 @@ function handleLoginToggle() {
   handleLogin();
 }
 
+// Creation du compte initial (mode bootstrap, one-shot).
 async function handleBootstrapRegister() {
   const username = document.getElementById('username').value.trim();
   const email = document.getElementById('email')?.value.trim() || '';
@@ -746,7 +673,7 @@ async function handleLogin() {
   }
 }
 
-// === Événements temps réel ===
+// --- Real-time Socket Event Handlers ----------------------------------------
 socket.on('connect', () => {
   // Ré-authentifie automatiquement le socket après reconnexion réseau.
   console.log('[WebSocket] Connecté');
@@ -806,49 +733,17 @@ socket.on('device_state', (state) => {
 });
 
 socket.on('settings_updated', (incomingSettings) => {
+  if (!defaultSettings) return;
   settingsCache = mergeLocalSettings(incomingSettings);
   applySettingsToUi();
   runAutomations(latestTelemetry);
 });
 
-// === Mise à jour des capteurs ===
-// Met à jour une bulle capteur (valeur + classe visuelle selon seuils).
-function update(id, val, min, max) {
-  const el = document.getElementById(id);
-  const bubble = document.getElementById(id + '-bubble');
-  
-  if (!el || !bubble) return;
-  
-  bubble.classList.remove('healthy', 'warning', 'critical');
-  if (val >= min && val <= max) bubble.classList.add('healthy');
-  else if (Math.abs(val - min) < (max - min) * 0.2 || Math.abs(val - max) < (max - min) * 0.2) bubble.classList.add('warning');
-  else bubble.classList.add('critical');
-  
-  el.textContent = Math.round(val);
-}
-
-// Met à jour l'indicateur de niveau d'eau avec un état lisible.
-function updateWaterLevel(isFull) {
-  const el = document.getElementById('water-level');
-  const bubble = document.getElementById('water-bubble');
-
-  if (!el || !bubble) return;
-
-  bubble.classList.remove('healthy', 'warning', 'critical');
-  if (isFull === true) {
-    el.textContent = 'Plein';
-    bubble.classList.add('healthy');
-  } else if (isFull === false) {
-    el.textContent = 'Vide';
-    bubble.classList.add('critical');
-  } else {
-    el.textContent = '-';
-  }
-}
-
+// --- Settings Merge / Normalization -----------------------------------------
 // Fusionne des paramètres reçus avec les valeurs locales par défaut
 // pour garantir des structures complètes et cohérentes.
 function mergeLocalSettings(incoming = {}) {
+  if (!defaultSettings) return incoming;
   const merged = JSON.parse(JSON.stringify(defaultSettings));
   const incomingThresholds = incoming.thresholds || {};
   for (const key of Object.keys(merged.thresholds)) {
@@ -972,6 +867,7 @@ function mergeLocalSettings(incoming = {}) {
   return merged;
 }
 
+// --- Settings UI Interaction -------------------------------------------------
 function setActiveSettingsTab(tabName) {
   const tabs = ['thresholds', 'automations', 'notifications'];
   for (const tab of tabs) {
@@ -1017,6 +913,7 @@ function updateNotificationRuleButtons(metric) {
 }
 
 function toggleNotificationRuleChannel(metric, channel) {
+  if (!ensureSettingsReady()) return;
   if (!NOTIFICATION_METRICS.includes(metric)) return;
   if (!['push', 'email'].includes(channel)) return;
   if (!isAuthenticated) {
@@ -1038,6 +935,7 @@ function toggleNotificationRuleChannel(metric, channel) {
 }
 
 function toggleThresholdAlertChannel(sensorKey, channel) {
+  if (!ensureSettingsReady()) return;
   if (channel !== 'push') return;
   if (!isAuthenticated) {
     setLoginError('Veuillez vous connecter pour modifier les alertes');
@@ -1063,10 +961,14 @@ function getDurationBounds(type) {
 function sanitizeDuration(type, seconds) {
   const { min, max } = getDurationBounds(type);
   const parsed = Number(seconds);
-  if (!Number.isFinite(parsed)) return defaultSettings.automationDurations[type];
+  if (!Number.isFinite(parsed)) {
+    const fallback = defaultSettings?.automationDurations?.[type];
+    return Number.isFinite(Number(fallback)) ? Number(fallback) : min;
+  }
   return Math.min(max, Math.max(min, Math.round(parsed)));
 }
 
+// --- Automation Runtime ------------------------------------------------------
 function getAutomationDurationMs(type) {
   const seconds = sanitizeDuration(type, settingsCache.automationDurations[type]);
   return seconds * 1000;
@@ -1111,27 +1013,6 @@ function startTimedAutomation(type) {
   }, durationMs);
 }
 
-// Met à jour l'état visuel d'un bouton d'équipement (ON/OFF manuel).
-function setDeviceButtonState(type, isOn) {
-  states[type] = Boolean(isOn);
-  const button = document.getElementById(deviceConfig[type]?.btnId);
-  if (!button) return;
-  if (states[type]) button.classList.add('on');
-  else button.classList.remove('on');
-}
-
-// Met à jour l'état visuel + checkbox d'un mode automatique.
-function setAutomationVisualState(type, enabled) {
-  automationStates[type] = Boolean(enabled);
-  const autoInput = document.getElementById(deviceConfig[type]?.autoId);
-  const button = document.getElementById(deviceConfig[type]?.btnId);
-  if (autoInput) autoInput.checked = automationStates[type];
-  if (button) {
-    if (automationStates[type]) button.classList.add('auto-active');
-    else button.classList.remove('auto-active');
-  }
-}
-
 // Envoie la commande MQTT logique pour un équipement ciblé.
 function sendDeviceCommand(type, shouldBeOn) {
   const cmd = deviceConfig[type]?.cmd;
@@ -1141,6 +1022,7 @@ function sendDeviceCommand(type, shouldBeOn) {
 
 // Applique la règle d'automatisation d'un équipement selon télémétrie.
 function applyAutomationForDevice(type, telemetry) {
+  if (!ensureSettingsReady()) return;
   const thresholds = settingsCache.thresholds;
   let desiredState = null;
 
@@ -1202,14 +1084,9 @@ function parseThresholdInput(elementId, fallbackValue) {
   return Number.isFinite(parsed) ? parsed : fallbackValue;
 }
 
-function setInputValueIfExists(elementId, value) {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-  element.value = value;
-}
-
 // Construit l'objet settings à envoyer au backend depuis le formulaire.
 function collectSettingsFromUi() {
+  if (!ensureSettingsReady()) return null;
   return {
     thresholds: {
       lux: {
@@ -1252,40 +1129,9 @@ function collectSettingsFromUi() {
   };
 }
 
-// Répercute `settingsCache` vers les champs UI et toggles auto.
-function applySettingsToUi() {
-  setInputValueIfExists('lux-min', settingsCache.thresholds.lux.min);
-  setInputValueIfExists('lux-max', settingsCache.thresholds.lux.max);
-  setInputValueIfExists('soil-min', settingsCache.thresholds.soil.min);
-  setInputValueIfExists('soil-max', settingsCache.thresholds.soil.max);
-  setInputValueIfExists('air-min', settingsCache.thresholds.air.min);
-  setInputValueIfExists('air-max', settingsCache.thresholds.air.max);
-  setInputValueIfExists('temp-min', settingsCache.thresholds.temp.min);
-  setInputValueIfExists('temp-max', settingsCache.thresholds.temp.max);
-  setInputValueIfExists('led-duration', sanitizeDuration('led', settingsCache.automationDurations.led));
-  setInputValueIfExists('hum-duration', sanitizeDuration('hum', settingsCache.automationDurations.hum));
-  setInputValueIfExists('fan-duration', sanitizeDuration('fan', settingsCache.automationDurations.fan));
-
-  for (const metric of NOTIFICATION_METRICS) {
-    const rule = settingsCache.alerts?.rules?.[metric] || NOTIFICATION_RULE_DEFAULTS;
-    setInputValueIfExists(`notif-start-${metric}`, rule.startDelaySec);
-    setInputValueIfExists(`notif-repeat-${metric}`, rule.repeatIntervalSec);
-    setInputValueIfExists(`notif-delta-${metric}`, rule.mailDelayMin);
-    setInputValueIfExists(`notif-reset-${metric}`, rule.recoveryResetSec);
-    updateNotificationRuleButtons(metric);
-  }
-
-  setAutomationVisualState('led', settingsCache.automations.led);
-  setAutomationVisualState('hum', settingsCache.automations.hum);
-  setAutomationVisualState('fan', settingsCache.automations.fan);
-  updateThresholdAlertButton('lux');
-  updateThresholdAlertButton('soil');
-  updateThresholdAlertButton('air');
-  updateThresholdAlertButton('temp');
-}
-
 // Gestion d'un toggle auto : sécurité auth, persist, application immédiate.
 async function handleAutomationToggle(type, enabled) {
+  if (!ensureSettingsReady()) return;
   if (!isAuthenticated) {
     const autoInput = document.getElementById(deviceConfig[type]?.autoId);
     if (autoInput) autoInput.checked = automationStates[type];
@@ -1343,10 +1189,12 @@ function toggleSettingsSection() {
   }
 }
 
+// Flux principal de telemetrie: rendu live + historique + automations + alertes.
 socket.on('telemetry', d => {
   // Pipeline front de télémétrie : UI instantanée, historique, sync boutons,
   // puis exécution éventuelle des automatismes.
   if (!d) return;
+  if (!ensureSettingsReady()) return;
   latestTelemetry = d;
   const thresholds = settingsCache.thresholds;
   
@@ -1394,7 +1242,7 @@ socket.on('telemetry', d => {
   maybeSendPushAlerts(d);
 });
 
-// === Graphique ===
+// --- Charting ----------------------------------------------------------------
 // Rend ou met à jour le graphique Chart.js à partir des points historiques.
 function renderChart(data) {
   if (!data || data.length === 0) return;
@@ -1521,9 +1369,13 @@ function loadChart() {
     .catch(err => console.error('Erreur chargement historique:', err));
 }
 
-// === Paramètres ===
+// --- Settings API Sync -------------------------------------------------------
 // Charge les paramètres serveur et les applique au front local.
 async function loadSettings() {
+  if (!defaultSettings) {
+    await loadServerSettingsDefaults();
+  }
+
   try {
     const response = await fetch('/api/settings', {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -1544,8 +1396,14 @@ async function loadSettings() {
 
 // Sauvegarde les paramètres vers l'API avec messages utilisateur.
 async function saveSettings(showAlert = true) {
+  if (!ensureSettingsReady()) {
+    if (showAlert) alert('Configuration non chargee depuis le serveur');
+    return;
+  }
+
   try {
     const settings = collectSettingsFromUi();
+    if (!settings) return;
     settingsCache = mergeLocalSettings(settings);
 
     const response = await fetch('/api/settings', {
@@ -1585,7 +1443,7 @@ async function saveSettings(showAlert = true) {
   }
 }
 
-// === Zoom du graphique ===
+// --- Chart Zoom & Resizable Layout ------------------------------------------
 // On change seulement la hauteur max de l'axe Y pour zoomer simplement.
 // Applique la valeur de zoom courante sur l'axe Y.
 function applyZoom() {
@@ -1644,7 +1502,7 @@ function initLayoutResizer() {
     }
 
     const rect = main.getBoundingClientRect();
-  const maxBasis = getInterfaceMaxBasis();
+    const maxBasis = getInterfaceMaxBasis();
     const currentBasis = parseFloat(interfaceStack.style.flexBasis);
     const fallbackBasis = Math.round(rect.height * DEFAULT_INTERFACE_RATIO);
     const basisSource = Number.isFinite(currentBasis) ? currentBasis : fallbackBasis;
@@ -1676,6 +1534,7 @@ function initLayoutResizer() {
   syncForViewport();
 }
 
+// --- DOM Lifecycle Hooks -----------------------------------------------------
 // Zoom avec la molette de la souris
 document.addEventListener('DOMContentLoaded', () => {
   initLayoutResizer();
@@ -1759,6 +1618,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Declenche la demande de permission push sur premiere interaction utilisateur.
 window.addEventListener('pointerdown', () => {
   const hasEnabledPushRule = NOTIFICATION_METRICS.some((metric) => Boolean(settingsCache.alerts?.rules?.[metric]?.push));
   if (!hasEnabledPushRule) return;

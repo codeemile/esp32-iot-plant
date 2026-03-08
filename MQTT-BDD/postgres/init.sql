@@ -1,4 +1,4 @@
--- Liste des comptes utilisateurs
+-- Compte utilisateur unique (mode mono-user)
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
