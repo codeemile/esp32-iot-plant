@@ -51,10 +51,10 @@ function updateAuthModeUi() {
 // Active les controles sensibles (boutons + toggles auto) une fois authentifie.
 function enableButtons() {
   const ledBtn = document.getElementById('led-btn');
-  const humBtn = document.getElementById('hum-btn');
+  const humBtn = document.getElementById('pump-btn');
   const fanBtn = document.getElementById('fan-btn');
   const ledAuto = document.getElementById('led-auto');
-  const humAuto = document.getElementById('hum-auto');
+  const humAuto = document.getElementById('pump-auto');
   const fanAuto = document.getElementById('fan-auto');
   if (ledBtn) ledBtn.classList.remove('disabled');
   if (humBtn) humBtn.classList.remove('disabled');
@@ -67,10 +67,10 @@ function enableButtons() {
 // Desactive les controles sensibles pour un utilisateur non authentifie.
 function disableButtons() {
   const ledBtn = document.getElementById('led-btn');
-  const humBtn = document.getElementById('hum-btn');
+  const humBtn = document.getElementById('pump-btn');
   const fanBtn = document.getElementById('fan-btn');
   const ledAuto = document.getElementById('led-auto');
-  const humAuto = document.getElementById('hum-auto');
+  const humAuto = document.getElementById('pump-auto');
   const fanAuto = document.getElementById('fan-auto');
   if (ledBtn) ledBtn.classList.add('disabled');
   if (humBtn) humBtn.classList.add('disabled');
@@ -193,7 +193,7 @@ function applySettingsToUi() {
   setInputValueIfExists('temp-min', settingsCache.thresholds.temp.min);
   setInputValueIfExists('temp-max', settingsCache.thresholds.temp.max);
   setInputValueIfExists('led-duration', sanitizeDuration('led', settingsCache.automationDurations.led));
-  setInputValueIfExists('hum-duration', sanitizeDuration('hum', settingsCache.automationDurations.hum));
+  setInputValueIfExists('pump-duration', sanitizeDuration('pump', settingsCache.automationDurations.pump));
   setInputValueIfExists('fan-duration', sanitizeDuration('fan', settingsCache.automationDurations.fan));
 
   for (const metric of NOTIFICATION_METRICS) {
@@ -206,7 +206,7 @@ function applySettingsToUi() {
   }
 
   setAutomationVisualState('led', settingsCache.automations.led);
-  setAutomationVisualState('hum', settingsCache.automations.hum);
+  setAutomationVisualState('pump', settingsCache.automations.pump);
   setAutomationVisualState('fan', settingsCache.automations.fan);
   updateThresholdAlertButton('lux');
   updateThresholdAlertButton('soil');

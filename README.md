@@ -303,7 +303,7 @@ CREATE TABLE users (
 #### InfluxDB (Données time-series)
 ```
 Measurement: plant_telemetry
-Fields: luminosite, humidite_sol, humidite_air, temperature, pressure, rssi, water_full, led_on, fan_on, humidifier_on
+Fields: luminosite, humidite_sol, humidite_air, temperature, pressure, rssi, water_full, led_on, fan_on, pump_on
 Timestamp: automatique
 ```
 
@@ -330,7 +330,7 @@ Timestamp: automatique
 ### Commandes disponibles
 - `LED_ON` / `LED_OFF`
 - `FAN_ON` / `FAN_OFF`
-- `HUM_ON` / `HUM_OFF`
+- `PUMP_ON` / `PUMP_OFF`
 
 ## Dépannage
 

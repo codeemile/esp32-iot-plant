@@ -149,14 +149,14 @@
 
         <!-- Arrosage -->
         <div class="sensor-item">
-          <div class="btn-circle disabled" id="hum-btn" onclick="toggle('hum', 'HUM')">
+          <div class="btn-circle disabled" id="pump-btn" onclick="toggle('pump', 'PUMP')">
             <div class="icon">💧</div>
             <div class="label">Arrosage</div>
           </div>
-          <label class="auto-toggle" for="hum-auto">
+          <label class="auto-toggle" for="pump-auto">
             <span class="auto-toggle-label">Auto</span>
             <span class="auto-switch">
-              <input type="checkbox" id="hum-auto" onchange="handleAutomationToggle('hum', this.checked)">
+              <input type="checkbox" id="pump-auto" onchange="handleAutomationToggle('pump', this.checked)">
               <span class="auto-slider"></span>
             </span>
           </label>
@@ -323,10 +323,10 @@
               <h3>💧 Arrosage auto</h3>
             </header>
             <div class="threshold-card-fields single-field-row">
-              <label class="threshold-field" for="hum-duration">
+              <label class="threshold-field" for="pump-duration">
                 <span class="threshold-label">Durée d'activation</span>
                 <div class="unit-input">
-                  <input type="number" id="hum-duration" min="5" max="600" step="5">
+                  <input type="number" id="pump-duration" min="5" max="600" step="5">
                   <span class="input-unit">s</span>
                 </div>
               </label>

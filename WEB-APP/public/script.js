@@ -25,8 +25,8 @@ const NOTIFICATION_RULE_DEFAULTS = {
   recoveryResetSec: 90
 };
 let chart = null;
-let states = { led: false, hum: false, fan: false };
-let automationStates = { led: false, hum: false, fan: false };
+let states = { led: false, pump: false, fan: false };
+let automationStates = { led: false, pump: false, fan: false };
 let token = localStorage.getItem('auth_token');
 let currentUsername = localStorage.getItem('username');
 let isAuthenticated = false;
@@ -37,12 +37,12 @@ let defaultSettings = null;
 let settingsCache = null;
 const automationTimerState = {
   led: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 },
-  hum: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 },
+  pump: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 },
   fan: { timeoutId: null, activeUntil: 0, lastTriggerAt: 0 }
 };
 const deviceConfig = {
   led: { btnId: 'led-btn', autoId: 'led-auto', cmd: 'LED' },
-  hum: { btnId: 'hum-btn', autoId: 'hum-auto', cmd: 'HUM' },
+  pump: { btnId: 'pump-btn', autoId: 'pump-auto', cmd: 'PUMP' },
   fan: { btnId: 'fan-btn', autoId: 'fan-auto', cmd: 'FAN' }
 };
 const BASE_SCALE = 1000; // Valeur de zoom par défaut au chargement
@@ -745,8 +745,8 @@ socket.on('device_state', (state) => {
   if (typeof state.led === 'boolean') {
     setDeviceButtonState('led', state.led);
   }
-  if (typeof state.hum === 'boolean') {
-    setDeviceButtonState('hum', state.hum);
+  if (typeof state.pump === 'boolean') {
+    setDeviceButtonState('pump', state.pump);
   }
   if (typeof state.fan === 'boolean') {
     setDeviceButtonState('fan', state.fan);
@@ -974,7 +974,7 @@ function toggleThresholdAlertChannel(sensorKey, channel) {
 }
 
 function getDurationBounds(type) {
-  if (type === 'hum') return { min: 5, max: 600 };
+  if (type === 'pump') return { min: 5, max: 600 };
   if (type === 'fan') return { min: 10, max: 3600 };
   return { min: 10, max: 21600 };
 }
@@ -1054,7 +1054,7 @@ function applyAutomationForDevice(type, telemetry) {
     else if (lux >= thresholds.lux.max) desiredState = false;
   }
 
-  if (type === 'hum') {
+  if (type === 'pump') {
     const soil = Number(telemetry.humidite_sol);
     if (!Number.isFinite(soil)) return;
     if (soil <= thresholds.soil.min) desiredState = true;
@@ -1095,7 +1095,7 @@ function applyAutomationForDevice(type, telemetry) {
 function runAutomations(telemetry) {
   if (!isAuthenticated || !telemetry) return;
   if (automationStates.led) applyAutomationForDevice('led', telemetry);
-  if (automationStates.hum) applyAutomationForDevice('hum', telemetry);
+  if (automationStates.pump) applyAutomationForDevice('pump', telemetry);
   if (automationStates.fan) applyAutomationForDevice('fan', telemetry);
 }
 
@@ -1136,12 +1136,12 @@ function collectSettingsFromUi() {
     },
     automations: {
       led: automationStates.led,
-      hum: automationStates.hum,
+      pump: automationStates.pump,
       fan: automationStates.fan
     },
     automationDurations: {
       led: sanitizeDuration('led', parseThresholdInput('led-duration', settingsCache.automationDurations.led)),
-      hum: sanitizeDuration('hum', parseThresholdInput('hum-duration', settingsCache.automationDurations.hum)),
+      pump: sanitizeDuration('pump', parseThresholdInput('pump-duration', settingsCache.automationDurations.pump)),
       fan: sanitizeDuration('fan', parseThresholdInput('fan-duration', settingsCache.automationDurations.fan))
     },
     alerts: {
@@ -1220,6 +1220,7 @@ socket.on('telemetry', d => {
   if (!ensureSettingsReady()) return;
   latestTelemetry = d;
   const thresholds = settingsCache.thresholds;
+  const pumpOn = d.pump_on;
   
   // Met à jour les valeurs affichées
   update('lux', d.luminosite || 0, thresholds.lux.min, thresholds.lux.max);
@@ -1243,7 +1244,7 @@ socket.on('telemetry', d => {
       water_full: d.water_full || false,
       led_on: d.led_on || false,
       fan_on: d.fan_on || false,
-      humidifier_on: d.humidifier_on || false
+      pump_on: pumpOn || false
     });
     
     if (chartData.length > 100) chartData.shift();
@@ -1257,8 +1258,8 @@ socket.on('telemetry', d => {
   if (d.fan_on !== undefined) {
     setDeviceButtonState('fan', d.fan_on);
   }
-  if (d.humidifier_on !== undefined) {
-    setDeviceButtonState('hum', d.humidifier_on);
+  if (pumpOn !== undefined) {
+    setDeviceButtonState('pump', pumpOn);
   }
 
   runAutomations(d);
