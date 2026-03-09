@@ -294,9 +294,9 @@ void loop()
     // Envoi du message sur MQTT
     if (mqtt.connected())
       mqtt.publish(TOPIC_TELEMETRY, payload.c_str());
-  }
 
-  Serial.println("Données : " + String(payload));
+    Serial.println("Donnees : " + payload);
+  }
 
   delay(50); // Petite pause pour garder le système fluide
 }

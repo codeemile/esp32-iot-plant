@@ -81,7 +81,7 @@ const TOPIC_TELEMETRY = 'tp/esp32/telemetry';
 const TOPIC_CMD = 'tp/esp32/cmd';
 let lastTelemetrySent = 0;
 const MIN_SEND_INTERVAL = 2000; // Envoi limité à un message toutes les 2 secondes
-let sharedDeviceStates = { led: false, hum: false, fan: false };
+let sharedDeviceStates = { led: false, pump: false, fan: false };
 
 const app = express();
 const server = http.createServer(app);
@@ -205,7 +205,7 @@ function saveTelemetryToInflux(data) {
   try {
     const ledOn = typeof data.led_on === 'boolean' ? data.led_on : false;
     const fanOn = typeof data.fan_on === 'boolean' ? data.fan_on : false;
-    const humidifierOn = typeof data.humidifier_on === 'boolean' ? data.humidifier_on : false;
+    const pumpOn = typeof data.pump_on === 'boolean' ? data.pump_on : false;
     const point = new Point('plant_telemetry')
       .floatField('luminosite', data.luminosite)
       .floatField('humidite_sol', data.humidite_sol)
@@ -216,7 +216,7 @@ function saveTelemetryToInflux(data) {
       .intField('water_full', data.water_full ? 1 : 0)
       .intField('led_on', ledOn ? 1 : 0)
       .intField('fan_on', fanOn ? 1 : 0)
-      .intField('humidifier_on', humidifierOn ? 1 : 0)
+      .intField('pump_on', pumpOn ? 1 : 0)
       .timestamp(new Date());
 
     writeApi.writePoint(point);
@@ -248,12 +248,12 @@ const defaultSettings = {
   },
   automations: {
     led: false,
-    hum: false,
+    pump: false,
     fan: false
   },
   automationDurations: {
     led: 1800,
-    hum: 20,
+    pump: 20,
     fan: 180
   },
   alerts: {
@@ -278,7 +278,7 @@ function mergeSettings(defaults, incoming = {}) {
   const merged = { thresholds: {}, indicators: {}, automations: {}, automationDurations: {}, alerts: {} };
   const durationBounds = {
     led: { min: 10, max: 21600 },
-    hum: { min: 5, max: 600 },
+    pump: { min: 5, max: 600 },
     fan: { min: 10, max: 3600 }
   };
   const notificationMetrics = ['lux', 'soil', 'air', 'temp', 'rssi', 'water'];
@@ -424,7 +424,7 @@ async function ensureRelationalSettingsSchema() {
       );
     }
 
-    for (const device of ['led', 'hum', 'fan']) {
+    for (const device of ['led', 'pump', 'fan']) {
       await pgPool.query(
         `INSERT INTO settings_automations (device, enabled, duration_sec)
          VALUES ($1, $2, $3)
@@ -470,7 +470,7 @@ async function getSettingsForUser(_userId) {
     incoming.thresholds[metric] = { ...defaultSettings.thresholds[metric] };
   }
 
-  for (const device of ['led', 'hum', 'fan']) {
+  for (const device of ['led', 'pump', 'fan']) {
     incoming.automations[device] = defaultSettings.automations[device];
     incoming.automationDurations[device] = defaultSettings.automationDurations[device];
   }
@@ -531,7 +531,7 @@ async function upsertSettingsForUser(_userId, incomingSettings) {
       );
     }
 
-    for (const device of ['led', 'hum', 'fan']) {
+    for (const device of ['led', 'pump', 'fan']) {
       await pgPool.query(
         `INSERT INTO settings_automations (device, enabled, duration_sec, updated_at)
          VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
@@ -626,8 +626,8 @@ client.on('message', async (topic, message) => {
       if (typeof data.led_on === 'boolean') {
         sharedDeviceStates.led = data.led_on;
       }
-      if (typeof data.humidifier_on === 'boolean') {
-        sharedDeviceStates.hum = data.humidifier_on;
+      if (typeof data.pump_on === 'boolean') {
+        sharedDeviceStates.pump = data.pump_on;
       }
       if (typeof data.fan_on === 'boolean') {
         sharedDeviceStates.fan = data.fan_on;
@@ -697,8 +697,8 @@ io.on('connection', (socket) => {
 
       if (cmd === 'LED_ON') sharedDeviceStates.led = true;
       if (cmd === 'LED_OFF') sharedDeviceStates.led = false;
-      if (cmd === 'HUM_ON') sharedDeviceStates.hum = true;
-      if (cmd === 'HUM_OFF') sharedDeviceStates.hum = false;
+      if (cmd === 'PUMP_ON') sharedDeviceStates.pump = true;
+      if (cmd === 'PUMP_OFF') sharedDeviceStates.pump = false;
       if (cmd === 'FAN_ON') sharedDeviceStates.fan = true;
       if (cmd === 'FAN_OFF') sharedDeviceStates.fan = false;
 
@@ -783,7 +783,7 @@ app.get('/api/history', async (req, res) => {
           rssi: o.rssi || 0,
           led_on: o.led_on || false,
           fan_on: o.fan_on || false,
-          humidifier_on: o.humidifier_on || false
+          pump_on: Boolean(o.pump_on)
         });
       },
       error(error) {
