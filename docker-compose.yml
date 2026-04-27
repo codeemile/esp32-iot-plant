@@ -99,9 +99,12 @@ services:
     container_name: reverse-proxy
     restart: unless-stopped
     ports:
-      - "0.0.0.0:80:80"
+      - "0.0.0.0:80:80"      # Garder HTTP (redirection)
+      - "0.0.0.0:443:443"    # Ajouter HTTPS
     volumes:
       - ./MQTT-BDD/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs/cert.pem:/etc/nginx/cert.pem:ro          # Ajouter
+      - ./certs/key.pem:/etc/nginx/key.pem:ro            # Ajouter
     depends_on:
       - web
     networks:
